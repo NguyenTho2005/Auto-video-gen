@@ -4,7 +4,7 @@ import { captureUrlScreenshot } from "../media/screenshot.js";
 import { readUpload, uploadPath } from "./uploads.js";
 import { planCreativeVisuals } from "./creative-planner.js";
 import { alignCreativeAudioAndSubtitles, validateTimelineSanity } from "../captions/audio-aligner.js";
-import { generateSrt } from "../captions/srt.js";
+import { generateSrt, parseSrt } from "../captions/srt.js";
 import { ScriptSchema, type Script } from "../render/script-schema.js";
 import type { LLMProvider } from "../script/types.js";
 import { DEFAULT_BGM } from "../channel-defaults.js";
@@ -15,7 +15,7 @@ import { UPLOAD_DIR } from "./uploads.js";
 
 export interface BuildCreativeScriptParams {
   url: string;
-  transcript: string;
+  transcript?: string;
   audioUploadId: string;
   srtContent?: string;
   templatePack?: string;
@@ -45,6 +45,21 @@ export async function buildCreativeScript(
     llmProvider,
   } = params;
 
+  // Resolve effective transcript: from transcript param or parsed from SRT content
+  let effectiveTranscript = transcript?.trim() || "";
+  if (!effectiveTranscript && srtContent?.trim()) {
+    try {
+      const cues = parseSrt(srtContent.trim());
+      effectiveTranscript = cues.map((c) => c.text.trim()).filter(Boolean).join(" ");
+    } catch (e: any) {
+      log.warn(`[Creative Builder] Could not parse transcript from SRT: ${e.message}`);
+    }
+  }
+
+  if (!effectiveTranscript) {
+    throw new Error("Cần cung cấp kịch bản lời đọc (transcript) hoặc file phụ đề (SRT).");
+  }
+
   // 1. Read uploaded audio metadata
   const audioInfo = await readUpload(audioUploadId);
   const audioDurationSec = audioInfo.durationSec;
@@ -58,7 +73,7 @@ export async function buildCreativeScript(
     log.warn(`[Creative Builder] Could not fetch URL content: ${err.message}. Using fallback metadata.`);
     source = {
       title: "Công nghệ nổi bật",
-      content: transcript,
+      content: effectiveTranscript,
       url: url || "https://github.com",
       domain: url ? new URL(url).hostname : "github.com",
       ogImage: null,
@@ -95,7 +110,7 @@ export async function buildCreativeScript(
 
   // 3. Plan scenes using AI Visual Planner (with safe fallback)
   const plannedScenes = await planCreativeVisuals({
-    transcript,
+    transcript: effectiveTranscript,
     url,
     source,
     availableAssets,
@@ -108,7 +123,7 @@ export async function buildCreativeScript(
   const alignment = await alignCreativeAudioAndSubtitles({
     audioPath: audioInfo.path,
     totalDurationSec: audioDurationSec,
-    transcript,
+    transcript: effectiveTranscript,
     sceneTexts,
     srtContent,
   });

@@ -1203,6 +1203,20 @@ app.post("/api/projects/:slug/captions", async (req, res) => {
   }
 });
 
+// ── 404 Handler for API Routes ──────────────────────────────────────────────
+app.use("/api", (req: Request, res: Response) => {
+  res.status(404).json({ error: `API endpoint không tồn tại: ${req.method} ${req.originalUrl}` });
+});
+
+// ── Global Error Handling Middleware ─────────────────────────────────────────
+app.use((err: any, req: Request, res: Response, _next: any) => {
+  console.error("[ServerError]", err);
+  const status = typeof err.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+  res.status(status).json({
+    error: err.message || "Lỗi máy chủ nội bộ (Internal Server Error)",
+  });
+});
+
 // Start Server
 const PORT = process.env.PORT || 3000;
 if (process.env.NODE_ENV !== "test") {

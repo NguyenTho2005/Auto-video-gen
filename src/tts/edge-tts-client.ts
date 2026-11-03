@@ -1,8 +1,23 @@
 import { EdgeTTS, createSRT } from "edge-tts-universal";
 import { writeFile } from "node:fs/promises";
-import {spawn} from "node:child_process";
-import {fileURLToPath} from "node:url";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import type { TtsClient, TtsTimingResult, WordTiming } from "./tts-client.js";
+
+function resolvePythonBinary(): string {
+  if (process.env.PYTHON_BIN && existsSync(process.env.PYTHON_BIN)) return process.env.PYTHON_BIN;
+  if (process.env.VIRTUAL_ENV) {
+    const venvPy = join(process.env.VIRTUAL_ENV, "bin", "python");
+    if (existsSync(venvPy)) return venvPy;
+  }
+  const localVenv = join(process.cwd(), ".venv", "bin", "python");
+  if (existsSync(localVenv)) return localVenv;
+  const zerottsVenv = join(process.cwd(), ".zerotts-venv", "bin", "python");
+  if (existsSync(zerottsVenv)) return zerottsVenv;
+  return "python3";
+}
 
 
 export interface EdgeTtsOpts {
@@ -32,11 +47,13 @@ export class EdgeTtsClient implements TtsClient {
   private async tryPythonEdgeTts(text:string,audioOutPath:string,srtOutPath?:string):Promise<TtsTimingResult|undefined>{
     try{
       return await new Promise<TtsTimingResult>((resolve,reject)=>{
-        const child=spawn('python3',[fileURLToPath(new URL('../../scripts/edge-word-speech.py',import.meta.url))],{stdio:['pipe','pipe','pipe']});
-        let output='';const timer=setTimeout(()=>{child.kill();reject(new Error('Edge TTS timeout'));},20000);
-        child.stdout.on('data',c=>{output+=c.toString();});child.stderr.on('data',()=>{});
+        const pythonBin = resolvePythonBinary();
+        const child=spawn(pythonBin,[fileURLToPath(new URL('../../scripts/edge-word-speech.py',import.meta.url))],{stdio:['pipe','pipe','pipe']});
+        let output='';let stderr='';const timer=setTimeout(()=>{child.kill();reject(new Error('Edge TTS timeout'));},35000);
+        child.stdout.on('data',c=>{output+=c.toString();});
+        child.stderr.on('data',c=>{stderr+=c.toString();});
         child.on('error',err=>{clearTimeout(timer);reject(err);});
-        child.on('close',code=>{clearTimeout(timer);try{if(code!==0)throw Error();const result=JSON.parse(output);if(!Array.isArray(result.words))throw Error();resolve(result);}catch{reject(new Error('Edge TTS word timing unavailable'));}});
+        child.on('close',code=>{clearTimeout(timer);try{if(code!==0)throw Error(stderr);const result=JSON.parse(output);if(!Array.isArray(result.words))throw Error();resolve(result);}catch{reject(new Error('Edge TTS word timing unavailable'));}});
         child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({text,audio:audioOutPath,srt:srtOutPath,...this.cfg}));
       });
     }catch{return undefined;}
@@ -47,7 +64,7 @@ export class EdgeTtsClient implements TtsClient {
     audioOutPath: string,
     srtOutPath?: string,
   ): Promise<TtsTimingResult> {
-    const delays = [1000];
+    const delays = [1500, 3000];
     let lastErr: unknown;
 
     for (let attempt = 0; attempt <= delays.length; attempt++) {
@@ -59,7 +76,7 @@ export class EdgeTtsClient implements TtsClient {
         });
 
         let timer:ReturnType<typeof setTimeout>|undefined;
-        const timeoutPromise=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('EdgeTTS synthesize timeout')),12000);});
+        const timeoutPromise=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('EdgeTTS synthesize timeout')),25000);});
         let result:Awaited<ReturnType<EdgeTTS['synthesize']>>;
         try{result=await Promise.race([tts.synthesize(),timeoutPromise]);}finally{clearTimeout(timer);}
         const buffer = Buffer.from(await result.audio.arrayBuffer());

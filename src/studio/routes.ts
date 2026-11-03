@@ -22,6 +22,7 @@ import { saveUpload, readUpload, UPLOAD_DIR } from './uploads.js';
 import { voiceConfig, studioTts } from './voice.js';
 import { ScriptSchema } from '../render/script-schema.js';
 import { buildCreativeScript } from './creative-builder.js';
+import { parseSrt } from '../captions/srt.js';
 
 export const studioRouter = express.Router();
 const previewInput = z.object({ text: z.string().trim().min(1).max(500), voice: ScriptSchema.shape.voice });
@@ -162,8 +163,21 @@ studioRouter.post('/preview', async (req, res) => {
 });
 studioRouter.post('/creative-build', async (req, res) => {
   try {
-    const { url, transcript, audioUploadId, srtContent, templatePack, channelName } = req.body;
-    if (!transcript?.trim()) throw new Error('Cần cung cấp kịch bản lời đọc (transcript).');
+    let { url, transcript, audioUploadId, srtContent, templatePack, channelName } = req.body;
+    srtContent = srtContent?.trim();
+    transcript = transcript?.trim();
+
+    // Derive transcript from SRT if not explicitly provided
+    if (!transcript && srtContent) {
+      try {
+        const cues = parseSrt(srtContent);
+        transcript = cues.map((c) => c.text.trim()).filter(Boolean).join(' ');
+      } catch (srtErr: any) {
+        throw new Error(`File phụ đề SRT không đúng định dạng: ${srtErr.message}`);
+      }
+    }
+
+    if (!transcript) throw new Error('Cần cung cấp kịch bản lời đọc (transcript) hoặc file phụ đề (SRT).');
     if (!audioUploadId) throw new Error('Cần tải lên file MP3 âm thanh.');
 
     let llmProvider: any = null;
@@ -182,9 +196,9 @@ studioRouter.post('/creative-build', async (req, res) => {
 
     const result = await buildCreativeScript({
       url: url || '',
-      transcript: transcript.trim(),
+      transcript,
       audioUploadId,
-      srtContent: srtContent?.trim(),
+      srtContent,
       templatePack,
       channelName,
       llmProvider,

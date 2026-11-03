@@ -352,9 +352,9 @@
             </div>
 
             <div class="form-group">
-              <label for="creativeTranscript">Kịch bản lời đọc (Voice Script do ChatGPT viết) <span class="required">*</span></label>
-              <textarea id="creativeTranscript" rows="6" placeholder="Dán toàn bộ lời đọc kịch bản do ChatGPT viết vào đây..."></textarea>
-              <span class="field-hint">Lời đọc giữ nguyên 100% để khớp hoàn hảo với audio thu âm. AI Visual Planner sẽ phân tích nội dung để chọn bố cục hình ảnh phù hợp.</span>
+              <label for="creativeTranscript">Kịch bản lời đọc (Voice Script - Tùy chọn nếu đã có SRT)</label>
+              <textarea id="creativeTranscript" rows="6" placeholder="Dán lời đọc kịch bản vào đây, HOẶC để trống nếu bạn chọn file phụ đề SRT ở bên dưới..."></textarea>
+              <span class="field-hint">Nếu đã chọn file phụ đề SRT ở bên dưới, bạn có thể để trống ô này (hệ thống sẽ tự động trích xuất toàn bộ kịch bản từ file SRT).</span>
             </div>
 
             <div class="form-row">
@@ -365,9 +365,9 @@
                 <audio id="creativeAudioPlayer" controls hidden style="width: 100%; margin-top: 8px; border-radius: 8px;"></audio>
               </div>
               <div class="form-group col-6">
-                <label for="creativeSrtFile">File phụ đề SRT (Tùy chọn)</label>
+                <label for="creativeSrtFile">File phụ đề SRT (Tùy chọn - Tự động trích xuất lời đọc)</label>
                 <input type="file" id="creativeSrtFile" accept=".srt" />
-                <span class="field-hint" id="creativeSrtStatus">Nếu có SRT, phụ đề sẽ hiển thị theo cue chính xác. Nếu không, hệ thống tự động căn chỉnh theo khoảng ngắt âm thanh thực tế.</span>
+                <span class="field-hint" id="creativeSrtStatus">Có file SRT sẽ tự động trích xuất kịch bản và đồng bộ phụ đề chính xác 100%.</span>
               </div>
             </div>
 

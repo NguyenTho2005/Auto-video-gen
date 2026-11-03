@@ -134,7 +134,7 @@ export async function runPipeline(scriptPath: string): Promise<void> {
   if(!script.voice.uploadId)await writeFile(join(outputDir,'pronunciation-review.json'),JSON.stringify({mode:script.voice.pronunciation||'lexicon',scenes:await Promise.all(script.scenes.map(async s=>({id:s.id,original:s.voiceText,...await preparedPronunciationReport(s.voiceText,script.voice.pronunciation,script.voice.pronunciationOverrides)})))},null,2));
 
   // STEP 4
-  const limit = pLimit(cfg.ttsProvider==='edge-tts'?Math.max(2,cfg.ttsConcurrency):cfg.ttsConcurrency);
+  const limit = pLimit(cfg.ttsConcurrency);
   const voiceDir = join(outputDir, "voice");
   await mkdir(voiceDir, { recursive: true });
   const imported = script.voice.uploadId ? await prepareImportedVoice(script, outputDir) : undefined;

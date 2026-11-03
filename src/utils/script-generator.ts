@@ -68,15 +68,24 @@ export async function generateScriptFromContent(opts: GenerateScriptOptions): Pr
 
   const facts = sourceFacts(content, title);
   const hook = buildHookSuggestions(title, content)[0];
-  const evidence = facts.find(f => /\d/.test(f)) || facts[0];
-  const detailFacts = facts.filter(f => f !== evidence).slice(0, 3);
-  const details = detailFacts.length ? detailFacts : [facts[0]];
-  const lastFact = facts[facts.length - 1];
+  const hookVoiceRaw = hook.voiceText.trim();
+  const remainingFacts = facts.filter(f => f.trim() !== hookVoiceRaw && !hookVoiceRaw.includes(f.trim()));
+  const evidence = (remainingFacts.find(f => /\d/.test(f)) || remainingFacts[0] || facts[0]).replace(/[([{\s]+$/g, '');
+  const detailFacts = remainingFacts.filter(f => f !== evidence).slice(0, 3);
+  const details = detailFacts.length ? detailFacts : (remainingFacts.length ? [remainingFacts[0]] : [facts[0]]);
+  const lastFact = (remainingFacts.find(f => f !== evidence && !detailFacts.includes(f)) || remainingFacts[remainingFacts.length - 1] || facts[facts.length - 1] || '').replace(/[([{\s]+$/g, '');
   const number = evidence.match(/\d[\d.,]*(?:\s*(?:%|GB|TB|MP|mAh|triệu|nghìn|bảng màu|phong cách))?/iu)?.[0];
   const hookHeadline = hook.headline;
   const hookSubhead = hook.subhead;
   const hookVoice = normalizeVietnameseForTts(hook.voiceText);
-  const body1Voice = normalizeVietnameseForTts(evidence);
+  let body1Voice = normalizeVietnameseForTts(evidence);
+  if (body1Voice === hookVoice || hookVoice.includes(body1Voice)) {
+    const alt = facts.find(f => {
+      const norm = normalizeVietnameseForTts(f);
+      return norm !== hookVoice && !hookVoice.includes(norm);
+    });
+    if (alt) body1Voice = normalizeVietnameseForTts(alt);
+  }
   const body2Voice = normalizeVietnameseForTts(details.join(' '));
   const body3Voice = normalizeVietnameseForTts(lastFact);
 

@@ -86,3 +86,13 @@ it('reviews smart speech with expanded dates/numbers while retaining the origina
  const response=await fetch(url+'/api/studio/pronunciation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({script})});
  expect(response.status).toBe(200);const result=await response.json();expect(result.scenes[0].spoken).toContain('hai mươi chín phẩy chín nghìn sao');expect(result.scenes[0].spoken).toContain('mười sáu gi ga bai');expect(result.scenes[0].spoken).toContain('tháng mười');expect(script.scenes[0].voiceText).toContain('29.9K');
 });
+it('accepts creative-build when transcript is omitted but SRT is provided', async () => {
+ const bad = await fetch(url + '/api/studio/creative-build', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ audioUploadId: '00000000-0000-0000-0000-000000000000' }),
+ });
+ expect(bad.status).toBe(400);
+ const badData = await bad.json();
+ expect(badData.error).toContain('kịch bản lời đọc (transcript) hoặc file phụ đề (SRT)');
+});

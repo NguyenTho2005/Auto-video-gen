@@ -14,7 +14,12 @@ window.Studio = (() => {
   const api = async (url, options) => {
     const response = await fetch(url, options);
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(`Yêu cầu thất bại (Mã HTTP ${response.status}${response.statusText ? ' - ' + response.statusText : ''})`);
+      }
       throw new Error(data.error || `Yêu cầu thất bại (${response.status})`);
     }
     return response;
@@ -321,7 +326,9 @@ window.Studio = (() => {
     message('Đang viết hook, đo giọng đọc và chọn độ dài phù hợp trong mức đã chọn. Bước này có thể mất vài phút…');
     try {
     const response = await api('/api/generate-script', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, renderSettings:el('studioRenderMode').value==='standard'?{fps:30,quality:'standard',workers:2}:{fps:24,quality:'standard',workers:2}, creative:{presetId:'reference',hookType:el('studioHookType').value,structureId:el('studioStructure').value,pacingId:el('studioMotion').value==='dynamic'?'quick':'narrated'}, visualAssetIds: visualAssets.map(a=>a.id), directingMode: el("studioAutoDirect").checked ? "auto" : undefined, fitDuration: !voice.uploadId, voice, visualStyle, templatePack: currentPack || undefined, explanationLevel:el('studioDepth').value, contentMode:el('studioDepth').value==='quick'?'overview':'deep-dive', colorTheme: el('studioTheme').value, motionPreset: visualStyle === 'tech-editorial' ? el('studioMotion').value : undefined, soundDesign: el('studioSoundDesign').checked, bgm: {enabled: el('studioBgmEnabled').checked}, captions: { enabled: true, style: visualStyle === 'tech-editorial' ? 'minimal' : payload.captions?.style || 'tiktok-bold' } }) });
-    const script = await response.json();
+    const script = await response.json().catch(() => {
+      throw new Error('Máy chủ không phản hồi kịch bản JSON hợp lệ.');
+    });
     const sourceLogo=el('studioLogo').value;if(sourceLogo)script.metadata.logoAssetId=sourceLogo;
     showReview(script, callback);
     message(script.narrationTiming ? `Đã đo audio · Thời lượng ${script.targetDurationSec.toFixed(1)} giây · Hook ${script.narrationTiming.hookSec.toFixed(1)} giây. Có thể xuất ngay hoặc chỉnh nếu muốn.` : 'Đã chuẩn bị kịch bản. Có thể chỉnh thêm nếu muốn.');

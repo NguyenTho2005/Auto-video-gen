@@ -280,8 +280,11 @@ BẢNG NỘI DUNG: ${opts.explanationLevel&&sourceRepoUrl?'Ưu tiên worked-exam
       if(repairCandidate)repairFeedback=errMsg;
 
       // Temporary provider outages must not consume the narration rewrite budget.
-      if(opts.measureNarration && /(?:API error \((?:429|502|503|504)\)|timeout|ETIMEDOUT|ECONNRESET)/i.test(errMsg) && transientRetries<3){
-        await new Promise(resolve=>setTimeout(resolve,1000*2**transientRetries++));
+      if(/(?:API error \((?:429|500|502|503|504)\)|timeout|ETIMEDOUT|ECONNRESET|RESOURCE_EXHAUSTED|Quota)/i.test(errMsg) && transientRetries<4){
+        const isRateLimit = /(?:429|RESOURCE_EXHAUSTED|Quota)/i.test(errMsg);
+        const delayMs = isRateLimit ? Math.max(5000, 3000 * 2 ** transientRetries++) : 1000 * 2 ** transientRetries++;
+        log.warn(`  Tạm thời gián đoạn LLM/mạng (${errMsg}). Đang chờ ${(delayMs/1000).toFixed(1)}s trước khi thử lại (${transientRetries}/4)...`);
+        await new Promise(resolve=>setTimeout(resolve, delayMs));
         attempt--;
         continue;
       }

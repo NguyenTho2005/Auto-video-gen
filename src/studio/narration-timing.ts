@@ -28,7 +28,7 @@ export function assessNarration(script:Script,measurement:NarrationMeasurement){
  return {targetSec:target,naturalSec,speechSec,tempo,hookSec,hookMaxSec,accepted,feedback};
 }
 export async function measureNarration(script:Script,outDir:string):Promise<NarrationMeasurement>{
- const cfg=voiceConfig(script.voice),client=studioTts(cfg,script.voice),limit=pLimit(cfg.ttsProvider==='edge-tts'?Math.max(2,cfg.ttsConcurrency):cfg.ttsConcurrency);
+ const cfg=voiceConfig(script.voice),client=studioTts(cfg,script.voice),limit=pLimit(cfg.ttsConcurrency);
  const dir=join(outDir,'voice');await mkdir(dir,{recursive:true});
  const results=await Promise.allSettled(script.scenes.map(s=>limit(()=>cachedSpeech(s.voiceText,join(dir,`scene-${s.id}.mp3`),cfg,script.voice.speed,client,script.voice.pronunciation,script.voice.pronunciationOverrides))));
  const failed=results.find(r=>r.status==='rejected');if(failed?.status==='rejected')throw failed.reason;

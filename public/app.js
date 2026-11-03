@@ -83,6 +83,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 3500);
   }
 
+  // ── Safe JSON Response Parser ────────────────────────────────────────────
+  async function parseJsonResponse(res, defaultErrorMsg = "Yêu cầu thất bại") {
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      const hint = res.status ? ` (Mã HTTP ${res.status}${res.statusText ? ' - ' + res.statusText : ''})` : "";
+      const path = res.url ? ` khi gọi ${new URL(res.url, window.location.href).pathname}` : "";
+      throw new Error(`Máy chủ không phản hồi JSON hợp lệ${hint}${path}. Hãy kiểm tra xem server backend (npm run web) có đang chạy không.`);
+    }
+    if (!res.ok) {
+      throw new Error(data?.error || `${defaultErrorMsg} (${res.status})`);
+    }
+    return data;
+  }
+
   // ── Tab Switching ────────────────────────────────────────────────────────
   tabBtns.forEach((btn) => {
     btn.addEventListener("click", (e) => {
@@ -126,8 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ url }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Không thể quét dữ liệu từ URL");
+      const data = await parseJsonResponse(res, "Không thể quét dữ liệu từ URL");
 
       currentExtractedData = {...data,url};
       extractedDomain.textContent = data.domain || "website";
@@ -176,9 +191,8 @@ document.addEventListener("DOMContentLoaded", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),
         });
-        const data=await res.json();
-        if(!res.ok)throw new Error(data.error||'Không thể đọc nội dung nguồn.');
-        currentExtractedData={...data,url};
+        const data = await parseJsonResponse(res, "Không thể đọc nội dung nguồn");
+        currentExtractedData = { ...data, url };
       }
 
       const payload = {
@@ -317,8 +331,7 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Không thể khởi động render video");
+      const data = await parseJsonResponse(res, "Không thể khởi động render video");
 
       currentActiveJob = data;
       progressJobId.textContent = data.slug;
@@ -2195,8 +2208,7 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         body: file,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Không thể tải lên file âm thanh");
+      const data = await parseJsonResponse(res, "Không thể tải lên file âm thanh");
 
       uploadedAudioData = data;
       creativeAudioStatus.textContent = `✅ Đã nhận: ${data.name} · ${data.durationSec.toFixed(1)} giây`;
@@ -2214,10 +2226,37 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  creativeSrtFile?.addEventListener("change", () => {
+  creativeSrtFile?.addEventListener("change", async () => {
     if (creativeSrtFile.files.length) {
-      creativeSrtStatus.textContent = `✅ Đã chọn phụ đề: ${creativeSrtFile.files[0].name}`;
+      const file = creativeSrtFile.files[0];
+      creativeSrtStatus.textContent = `✅ Đã chọn phụ đề: ${file.name}`;
       creativeSrtStatus.style.color = "#52c41a";
+
+      try {
+        const text = await file.text();
+        const extracted = text
+          .replace(/^\uFEFF/, "")
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .split(/\n\n+/)
+          .map((block) => {
+            const parts = block.trim().split("\n");
+            if (parts.length >= 2) {
+              const startIdx = /^\d+$/.test(parts[0].trim()) ? 2 : 1;
+              return parts.slice(startIdx).join(" ").trim();
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join(" ");
+
+        if (!creativeTranscript.value.trim() && extracted) {
+          creativeTranscript.value = extracted;
+          showToast("Đã tự động trích xuất lời đọc từ file SRT!");
+        }
+      } catch (err) {
+        console.warn("Could not read SRT file text:", err);
+      }
     } else {
       creativeSrtStatus.textContent = "Nếu có SRT, phụ đề sẽ hiển thị theo cue chính xác. Nếu không, hệ thống tự động căn chỉnh theo khoảng ngắt âm thanh thực tế.";
       creativeSrtStatus.style.color = "";
@@ -2225,9 +2264,43 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   btnSubmitCreative?.addEventListener("click", async () => {
-    const transcript = creativeTranscript.value.trim();
+    let transcript = creativeTranscript.value.trim();
+
+    // Read SRT if provided
+    let srtContent = undefined;
+    if (creativeSrtFile.files.length) {
+      try {
+        srtContent = await creativeSrtFile.files[0].text();
+      } catch (err) {
+        console.warn("Error reading SRT file:", err);
+      }
+    }
+
+    // If transcript is empty, extract text directly from SRT
+    if (!transcript && srtContent) {
+      transcript = srtContent
+        .replace(/^\uFEFF/, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .split(/\n\n+/)
+        .map((block) => {
+          const parts = block.trim().split("\n");
+          if (parts.length >= 2) {
+            const startIdx = /^\d+$/.test(parts[0].trim()) ? 2 : 1;
+            return parts.slice(startIdx).join(" ").trim();
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join(" ");
+
+      if (transcript && !creativeTranscript.value.trim()) {
+        creativeTranscript.value = transcript;
+      }
+    }
+
     if (!transcript) {
-      showToast("Vui lòng dán kịch bản lời đọc (voice script)!");
+      showToast("Vui lòng dán kịch bản lời đọc HOẶC chọn file phụ đề SRT!");
       creativeTranscript.focus();
       return;
     }
@@ -2257,19 +2330,12 @@ document.addEventListener("DOMContentLoaded", () => {
           body: audioFile,
         });
 
-        const uploadData = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadData.error || "Không thể tải lên file âm thanh");
+        const uploadData = await parseJsonResponse(uploadRes, "Không thể tải lên file âm thanh");
         audioUploadId = uploadData.uploadId;
         uploadedAudioData = uploadData;
       }
 
-      // 2. Read SRT if provided
-      let srtContent = undefined;
-      if (creativeSrtFile.files.length) {
-        srtContent = await creativeSrtFile.files[0].text();
-      }
-
-      // 3. Call AI Visual Planner & Builder
+      // 2. Call AI Visual Planner & Builder
       btnSubmitCreative.innerHTML = `<span>🧠</span><span>AI Visual Planner đang chọn bố cục...</span>`;
       const buildRes = await fetch("/api/studio/creative-build", {
         method: "POST",
@@ -2284,8 +2350,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }),
       });
 
-      const buildData = await buildRes.json();
-      if (!buildRes.ok) throw new Error(buildData.error || "Lỗi tạo bản dựng Creative");
+      const buildData = await parseJsonResponse(buildRes, "Lỗi tạo bản dựng Creative");
 
       if (buildData.alignment?.timingQuality?.mismatchWarning) {
         showToast(buildData.alignment.timingQuality.mismatchWarning);
