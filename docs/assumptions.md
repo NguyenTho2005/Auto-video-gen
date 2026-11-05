@@ -32,3 +32,9 @@
 - Edge retries are bounded: two Python attempts (20s each), then two JavaScript attempts (12s each). All scene requests settle before a new measurement; successful content-addressed audio stays cached. Never silently switch the user's voice or provider.
 - Studio clears its ongoing-generation status when the request fails. Diagnostic check observed NoAudioReceived initially, then a successful real Nam Minh +20% sample with high-accuracy word boundaries in 5.261s.
 - “Tin nhanh” is an explicit one-click selection of creative news + quick explanation level (≤60s, no minimum filler target). Save depth/structure locally so a page reload cannot silently switch it back to standard 75s. Existing longer levels remain selectable.
+
+## 2026-11-06 · Khảo sát audio→SRT, ZeroTTS, template (PRD v3)
+- Chưa có ASR trong repo; M8 đề xuất faster-whisper + model tiếng Việt (PhoWhisper-ct2) trong venv riêng. Tên repo model/license/revision phải được agent xác minh trước khi dùng (chưa kiểm tra trực tiếp).
+- Số đo ZeroTTS (RTF ≈1,5–1,8; lệch âm lượng ~9,5 dB giữa 8 giọng) đo trên máy 16 luồng CPU không GPU; máy khác có thể khác. Chạy trong sandbox cô lập loopback sẽ lỗi khởi động; ngoài sandbox chạy bình thường.
+- Ngưỡng template (chữ ≥34/28/24px, phóng to ≤1,25×, lấp đầy ≥55%) là đề xuất ban đầu, cần người dùng duyệt.
+- Chi tiết: docs/PRD.md, docs/agent-prompts-m8-m10.md.
