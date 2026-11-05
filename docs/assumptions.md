@@ -38,3 +38,10 @@
 - Số đo ZeroTTS (RTF ≈1,5–1,8; lệch âm lượng ~9,5 dB giữa 8 giọng) đo trên máy 16 luồng CPU không GPU; máy khác có thể khác. Chạy trong sandbox cô lập loopback sẽ lỗi khởi động; ngoài sandbox chạy bình thường.
 - Ngưỡng template (chữ ≥34/28/24px, phóng to ≤1,25×, lấp đầy ≥55%) là đề xuất ban đầu, cần người dùng duyệt.
 - Chi tiết: docs/PRD.md, docs/agent-prompts-m8-m10.md.
+
+## 2026-11-06 · M8 thực thi (feat/m8-audio-to-srt)
+- Chọn `qbsmlabs/PhoWhisper-small` (BSD-3, ~0.97 GB) theo lựa chọn người dùng; kiến trúc one-shot CLI (không daemon). Chi tiết: docs/adr-0009-local-asr.md.
+- WER thô 17.5% vượt mục tiêu ≤12% vì Edge TTS đọc thuật ngữ Anh kiểu phiên âm Việt (audio thực nói "ghiết"/"cornish"...) — đây là giới hạn dữ liệu, không phải lỗi ASR; đường có script giữ 100% chữ kịch bản + timing thật. Chưa có cách chắn tổng quát khối ảo giác trong phần im lặng cuối audio mà không phá segment thật.
+- Máy có cờ CUDA nhưng thiếu libcublas → worker tự nạp thử 1 giây rồi fallback CPU/int8; `auto` không được tin.
+- Nghiệm thu A8.3 render video mẫu từ audio: chạy ngoài sandbox.
+

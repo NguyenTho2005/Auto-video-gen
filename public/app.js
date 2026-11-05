@@ -2164,6 +2164,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const creativeChannel = document.getElementById("creativeChannel");
   const btnSubmitCreative = document.getElementById("btnSubmitCreative");
   const creativeStatusAlert = document.getElementById("creativeStatusAlert");
+  const btnGenerateSrt = document.getElementById("btnGenerateSrt");
+  const creativeGeneratedSrt = document.getElementById("creativeGeneratedSrt");
+  const creativeAsrStatus = document.getElementById("creativeAsrStatus");
 
   let uploadedAudioData = null;
 
@@ -2263,6 +2266,61 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ── M8: Tạo SRT từ audio bằng ASR cục bộ ───────────────────────────────────
+  btnGenerateSrt?.addEventListener("click", async () => {
+    try {
+      // Đảm bảo audio đã upload (tận dụng upload từ click trước đó nếu có).
+      let audioUploadId = uploadedAudioData?.uploadId;
+      if (!audioUploadId) {
+        if (!creativeAudioFile?.files.length) {
+          showToast("Hãy chọn file MP3/WAV trước khi tạo SRT!");
+          creativeAudioFile?.focus();
+          return;
+        }
+        btnGenerateSrt.disabled = true;
+        creativeAsrStatus.textContent = "⏳ Đang tải audio lên hệ thống...";
+        creativeAsrStatus.style.color = "var(--accent-cyan, #00f2fe)";
+        const uploadRes = await fetch(`/api/studio/uploads?name=${encodeURIComponent(creativeAudioFile.files[0].name)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream", "x-filename": creativeAudioFile.files[0].name },
+          body: creativeAudioFile.files[0],
+        });
+        const uploadData = await parseJsonResponse(uploadRes, "Không thể tải lên file âm thanh");
+        audioUploadId = uploadData.uploadId;
+        uploadedAudioData = uploadData;
+      }
+
+      btnGenerateSrt.disabled = true;
+      const durSec = uploadedAudioData?.durationSec;
+      creativeAsrStatus.textContent = "⏳ Đang nhận dạng giọng nói cục bộ (PhoWhisper). Lần đầu có thể tải model ~0.97 GB; sau đó khoảng "
+        + (durSec ? `${Math.max(10, Math.round(durSec / 6))}–${Math.max(20, Math.round(durSec / 2))}s` : "vài phút") + "...";
+      creativeAsrStatus.style.color = "var(--accent-cyan, #00f2fe)";
+
+      const res = await fetch("/api/studio/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId: audioUploadId }),
+      });
+      const data = await parseJsonResponse(res, "Lỗi nhận dạng giọng nói");
+
+      creativeGeneratedSrt.value = data.srt;
+      creativeGeneratedSrt.hidden = false;
+      const acc = data.quality?.wordAccuracy === "high" ? "cao (timing từng từ)" : "thấp";
+      creativeAsrStatus.textContent =
+        `✅ Đã tạo SRT (${data.cues.length} cue, ${data.words.length} từ). ` +
+        `Chất lượng timing: ${acc}. Sửa chữ trực tiếp trong khung này trước khi dựng video.`;
+      creativeAsrStatus.style.color = "#52c41a";
+      if (data.quality?.mismatchWarning) showToast(data.quality.mismatchWarning);
+      showToast("Đã tạo SRT từ audio!");
+    } catch (err) {
+      creativeAsrStatus.textContent = `❌ Lỗi: ${err.message}`;
+      creativeAsrStatus.style.color = "#ff4d4f";
+      showToast(`Lỗi tạo SRT: ${err.message}`);
+    } finally {
+      btnGenerateSrt.disabled = false;
+    }
+  });
+
   btnSubmitCreative?.addEventListener("click", async () => {
     let transcript = creativeTranscript.value.trim();
 
@@ -2277,7 +2335,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // If transcript is empty, extract text directly from SRT
-    if (!transcript && srtContent) {
+    if (transcript === "" && srtContent) {
       transcript = srtContent
         .replace(/^\uFEFF/, "")
         .replace(/\r\n/g, "\n")
@@ -2299,10 +2357,42 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    if (!transcript) {
-      showToast("Vui lòng dán kịch bản lời đọc HOẶC chọn file phụ đề SRT!");
-      creativeTranscript.focus();
-      return;
+    // M8: SRT tự sinh bằng ASR — gửi TEXT đã sửa làm transcript; server tự căn
+    // lại timing từ word-boundary ASR (dùng kịch bản, thời gian của ASR).
+    if (!srtContent && creativeGeneratedSrt && creativeGeneratedSrt.value.trim()) {
+      const generatedText = creativeGeneratedSrt.value
+        .replace(/^\uFEFF/, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .split(/\n\n+/)
+        .map((block) => {
+          const parts = block.trim().split("\n");
+          if (parts.length >= 2) {
+            const startIdx = /^\d+$/.test(parts[0].trim()) ? 2 : 1;
+            return parts.slice(startIdx).join(" ").trim();
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join(" ");
+      if (!transcript && generatedText) transcript = generatedText;
+      srtContent = undefined; // giữ nguyên luồng ASR (asr-words), không xuống bán như imported-srt
+    }
+
+    // Nếu chưa có gì hết: vẫn cho đi tiếp với audio — server tự chạy ASR.
+    if (!transcript || (!uploadedAudioData && !creativeAudioFile.files.length)) {
+      if (!uploadedAudioData && !creativeAudioFile.files.length) {
+        showToast("Vui lòng chọn file âm thanh MP3/WAV!");
+        creativeAudioFile.focus();
+        return;
+      }
+      if (!transcript) {
+        const okAuto = confirm("Chưa có kịch bản & SRT. Hệ thống sẽ tự nghe audio (ASR cục bộ) rồi dựng video. Tiếp tục?");
+        if (!okAuto) {
+          creativeTranscript.focus();
+          return;
+        }
+      }
     }
 
     if (!uploadedAudioData && !creativeAudioFile.files.length) {
@@ -2345,6 +2435,7 @@ document.addEventListener("DOMContentLoaded", () => {
           transcript,
           audioUploadId,
           srtContent,
+          allowAsr: true, // UI tự hỏi người dùng trước khi nghe audio; server không cần chặn lại
           templatePack: creativeStylePack?.value || "reference",
           channelName: creativeChannel?.value.trim() || "DevPeek36",
         }),

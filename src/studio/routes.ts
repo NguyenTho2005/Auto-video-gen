@@ -22,7 +22,9 @@ import { saveUpload, readUpload, UPLOAD_DIR } from './uploads.js';
 import { voiceConfig, studioTts } from './voice.js';
 import { ScriptSchema } from '../render/script-schema.js';
 import { buildCreativeScript } from './creative-builder.js';
-import { parseSrt } from '../captions/srt.js';
+import { parseSrt, generateSrt } from '../captions/srt.js';
+import { FasterWhisperClient } from "../asr/faster-whisper-client.js";
+import { alignScriptWithAsr } from "../asr/script-align.js";
 
 export const studioRouter = express.Router();
 const previewInput = z.object({ text: z.string().trim().min(1).max(500), voice: ScriptSchema.shape.voice });
@@ -138,6 +140,45 @@ studioRouter.get('/audio/:id', async (req, res) => {
   try { res.type('wav').sendFile((await readUpload(String(req.params.id))).path, { dotfiles: 'allow' }); }
   catch (err: any) { res.status(404).json({ error: err.message }); }
 });
+
+// ── M8: audio → SRT (local ASR, cancels when the client disconnects) ───────
+let transcribeClientOverride: import("../asr/types.js").AsrClient | null = null;
+/** Test hook: substitute FasterWhisperClient with a fake (no Python, no network). */
+export function setTranscribeClientForTest(client: import("../asr/types.js").AsrClient | null) {
+  transcribeClientOverride = client;
+}
+const transcribeInput = z.object({
+  uploadId: z.string().min(8).max(64),
+  scriptText: z.string().max(20000).optional(),
+  language: z.string().min(2).max(12).optional(),
+});
+studioRouter.post('/transcribe', async (req, res) => {
+  try {
+    const body = transcribeInput.parse(req.body);
+    const upload = await readUpload(body.uploadId);
+    const language = body.language ?? process.env.ASR_LANGUAGE ?? 'vi';
+    const client = transcribeClientOverride ?? new FasterWhisperClient();
+    const abort = new AbortController();
+    req.on('close', () => abort.abort());
+    const aligned = await alignScriptWithAsr(client, upload.path, body.scriptText || undefined, { language, signal: abort.signal });
+    res.json({
+      srt: generateSrt(aligned.cues),
+      cues: aligned.cues,
+      words: aligned.raw.words,
+      durationSec: aligned.raw.durationSec,
+      quality: {
+        source: 'asr',
+        wordAccuracy: aligned.wordAccuracy,
+        overlap: aligned.overlap,
+        mismatchWarning: aligned.mismatchWarning ?? null,
+        model: aligned.raw.model,
+        revision: aligned.raw.revision,
+      },
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
 studioRouter.post('/pronunciation', async(req,res)=>{
   try{
     const script=ScriptSchema.parse(req.body.script);
@@ -177,7 +218,11 @@ studioRouter.post('/creative-build', async (req, res) => {
       }
     }
 
-    if (!transcript) throw new Error('Cần cung cấp kịch bản lời đọc (transcript) hoặc file phụ đề (SRT).');
+    // M8: chỉ audio không kịch bản/SRT vẫn đi tiếp khi caller chủ động bật ASR
+    // (allowAsr) — UI Creative Mode gắn cờ này; client cũ không cờ giữ hành vi cũ.
+    if (!transcript && !srtContent && req.body?.allowAsr !== true) {
+      throw new Error('Cần cung cấp kịch bản lời đọc (transcript) hoặc file phụ đề (SRT).');
+    }
     if (!audioUploadId) throw new Error('Cần tải lên file MP3 âm thanh.');
 
     let llmProvider: any = null;

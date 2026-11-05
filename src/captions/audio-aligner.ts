@@ -16,7 +16,7 @@ export interface AlignmentResult {
   cues: CaptionCue[];
   sceneBoundaries: number[];
   timingQuality: {
-    source: "imported-srt" | "acoustic-speech-segments" | "fallback-segments";
+    source: "asr-words" | "imported-srt" | "acoustic-speech-segments" | "fallback-segments";
     wordAccuracy: "low" | "high";
     cueAccuracy: "verified" | "acoustic-verified" | "unverified";
     sceneTiming: "audio-mapped";
@@ -467,8 +467,37 @@ export async function alignCreativeAudioAndSubtitles(params: {
   transcript: string;
   sceneTexts: string[];
   srtContent?: string;
+  /** Precomputed ASR cues (M8): highest-priority timing source. */
+  asrCues?: CaptionCue[];
+  /** Optional warning from script↔ASR alignment (echoed into timingQuality). */
+  asrMismatchWarning?: string;
 }): Promise<AlignmentResult> {
-  const { audioPath, totalDurationSec, transcript, sceneTexts, srtContent } = params;
+  const { audioPath, totalDurationSec, transcript, sceneTexts, srtContent, asrCues, asrMismatchWarning } = params;
+
+  // Case 0: ASR word timings (M8) — highest priority, highlight per word is real.
+  if (asrCues && asrCues.length > 0) {
+    const wordAccuracy = asrCues[0].accuracy === "high" ? "high" : "low";
+    const cues = asrCues.map((c) => ({
+      ...c,
+      endSec: Math.min(totalDurationSec, c.endSec),
+      endMs: Math.min(Math.round(totalDurationSec * 1000), c.endMs),
+    }));
+    const sceneBoundaries = mapScenesToAudioTimestamps(sceneTexts, cues, totalDurationSec);
+    validateTimelineSanity({ sceneBoundaries, totalDurationSec, sceneCount: sceneTexts.length });
+    return {
+      cues,
+      sceneBoundaries,
+      timingQuality: {
+        source: "asr-words",
+        wordAccuracy,
+        cueAccuracy: wordAccuracy === "high" ? "verified" : "acoustic-verified",
+        sceneTiming: "audio-mapped",
+        mismatchWarning: asrMismatchWarning,
+      },
+      // Word highlight only when timings are real; otherwise the old behaviour.
+      highlightMode: wordAccuracy === "high" ? "accurate-only" : "estimated",
+    };
+  }
 
   // Case 1: SRT is provided
   if (srtContent && srtContent.trim()) {

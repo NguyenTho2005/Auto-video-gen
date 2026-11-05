@@ -23,7 +23,9 @@
     "build": "tsc",
     "sfx:download": "tsx scripts/download-sfx.ts",
     "sfx:filter": "tsx scripts/filter-sfx.ts",
-    "zerotts:setup": "bash scripts/setup-zerotts.sh"
+    "zerotts:setup": "bash scripts/setup-zerotts.sh",
+    "asr": "tsx src/asr/cli.ts",
+    "asr:setup": "bash scripts/setup-asr.sh"
   },
   "keywords": [
     "video",

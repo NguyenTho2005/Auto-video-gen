@@ -371,6 +371,17 @@
               </div>
             </div>
 
+            <div class="form-group">
+              <button type="button" class="btn btn-secondary" id="btnGenerateSrt">
+                <span class="icon">✨</span>
+                <span>Tạo SRT từ audio (nhận dạng giọng nói cục bộ)</span>
+              </button>
+              <span class="field-hint" id="creativeAsrStatus">
+                Không cần dán kịch bản hay SRT: máy sẽ tự nghe audio và sinh phụ đề có timing từng từ. Có thể sửa chữ dưới đây trước khi dựng.
+              </span>
+              <textarea id="creativeGeneratedSrt" rows="8" hidden spellcheck="false"></textarea>
+            </div>
+
             <div class="form-row">
               <div class="form-group col-6">
                 <label for="creativeStylePack">Phong cách thiết kế (Style Pack)</label>

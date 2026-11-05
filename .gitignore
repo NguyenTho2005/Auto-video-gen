@@ -31,6 +31,12 @@ __pycache__/
 .zerotts-models/
 .zerotts-runtime/
 
+# Isolated local ASR (M8): venv, model snapshots, result cache
+.asr-venv/
+.asr-models/
+.asr-runtime/
+.asr-cache/
+
 # Generated media, speech cache and local validation output
 .cache/
 

@@ -1,8 +1,20 @@
 import type {TtsTimingResult,WordTiming} from '../tts/tts-client.js';
 const norm=(s:string)=>s.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
-const same=(a:string,b:string)=>Boolean(norm(a))&&norm(a)===norm(b)&&(!/^[A-Z][A-Z0-9._-]+$/.test(a.replace(/[^\p{L}\p{N}_.-]/gu,''))||a===b);
-/** Anchor unchanged words to provider times; map expanded names/numbers back to their display tokens. */
-export function alignSpokenWords(original:string,timing:TtsTimingResult):TtsTimingResult{
+/** caseInsensitive=true loosens the "must look identical" rule for capitalized
+ * words; used by ASR↔script alignment where Whisper lowercases plain words.
+ * Default stays exactly as before (TTS flows untouched). */
+ /** Anchor unchanged words to provider times; map expanded names/numbers back to their display tokens. */
+export function alignSpokenWords(original:string,timing:TtsTimingResult,opts?:{caseInsensitive?:boolean}):TtsTimingResult{
+ const ci=Boolean(opts?.caseInsensitive);
+ const same=(a:string,b:string)=>{
+  const na=norm(a),nb=norm(b);
+  if(!na||na!==nb)return ci?sameLoose(a,b):false;
+  if(ci)return true;
+  return !/^[A-Z][A-Z0-9._-]+$/.test(a.replace(/[^\p{L}\p{N}_.-]/gu,''))||a===b;
+ };
+ /** Same as norm() but also strips Vietnamese tone/diacritic marks (ci-mode only). */
+ const normLoose=(s:string)=>s.normalize('NFC').toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/[^\p{L}\p{N}]/gu,'');
+ const sameLoose=(a:string,b:string)=>{const la=normLoose(a),lb=normLoose(b);return Boolean(la)&&la===lb;};
  const tokens=original.trim().split(/\s+/),spoken=timing.words;
  if(!tokens.length||!spoken.length)return {accuracy:'low',words:[]};
  const rows=Array.from({length:tokens.length+1},()=>new Uint16Array(spoken.length+1));

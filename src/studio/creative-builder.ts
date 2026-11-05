@@ -5,6 +5,9 @@ import { readUpload, uploadPath } from "./uploads.js";
 import { planCreativeVisuals } from "./creative-planner.js";
 import { alignCreativeAudioAndSubtitles, validateTimelineSanity } from "../captions/audio-aligner.js";
 import { generateSrt, parseSrt } from "../captions/srt.js";
+import { readCachedAsr, FasterWhisperClient, asrInstalled } from "../asr/faster-whisper-client.js";
+import { alignScriptWithRaw } from "../asr/script-align.js";
+import type { AsrResult } from "../asr/types.js";
 import { ScriptSchema, type Script } from "../render/script-schema.js";
 import type { LLMProvider } from "../script/types.js";
 import { DEFAULT_BGM } from "../channel-defaults.js";
@@ -21,6 +24,7 @@ export interface BuildCreativeScriptParams {
   templatePack?: string;
   channelName?: string;
   llmProvider?: LLMProvider | null;
+  asrLanguage?: string;
 }
 
 export interface BuildCreativeScriptResult {
@@ -43,6 +47,7 @@ export async function buildCreativeScript(
     templatePack = "reference",
     channelName = "DevPeek36",
     llmProvider,
+    asrLanguage = process.env.ASR_LANGUAGE ?? "vi",
   } = params;
 
   // Resolve effective transcript: from transcript param or parsed from SRT content
@@ -56,14 +61,41 @@ export async function buildCreativeScript(
     }
   }
 
-  if (!effectiveTranscript) {
-    throw new Error("Cần cung cấp kịch bản lời đọc (transcript) hoặc file phụ đề (SRT).");
-  }
-
   // 1. Read uploaded audio metadata
   const audioInfo = await readUpload(audioUploadId);
   const audioDurationSec = audioInfo.durationSec;
   log.info(`[Creative Builder] Uploaded audio duration: ${audioDurationSec.toFixed(2)}s`);
+
+  // 1b. M8: audio → ASR. SRT input keeps the legacy path; otherwise ASR word timings win.
+  const hasSrt = Boolean(srtContent?.trim());
+  let asrResult: AsrResult | undefined;
+  let asrAligned: ReturnType<typeof alignScriptWithRaw> | undefined;
+  try {
+    if (!hasSrt && asrInstalled()) {
+      asrResult = await readCachedAsr(audioInfo.path, { language: asrLanguage });
+      if (!asrResult && !effectiveTranscript) {
+        // Auto-run ASR when the user did not press "Tạo SRT từ audio" first.
+        // Cache hit makes this instant; a cold run happens at most once per audio.
+        asrResult = await new FasterWhisperClient().transcribe(audioInfo.path, { language: asrLanguage });
+      }
+      if (asrResult) asrAligned = alignScriptWithRaw(effectiveTranscript || undefined, asrResult);
+    }
+  } catch (err: any) {
+    log.warn(`[Creative Builder] ASR tự động thất bại: ${err.message}`);
+    asrResult = undefined;
+    asrAligned = undefined;
+  }
+
+  // Legacy contract stays: without ASR availability nothing changed here.
+  if (!effectiveTranscript && !hasSrt && !asrAligned) {
+    throw new Error(
+      "Cần cung cấp kịch bản lời đọc (transcript) hoặc file phụ đề (SRT). " +
+      "Hoặc cài ASR cục bộ bằng `npm run asr:setup` để tự nghe audio."
+    );
+  }
+  if (!effectiveTranscript && asrAligned) {
+    effectiveTranscript = asrAligned.cues.map((c) => c.text).join(" ");
+  }
 
   // 2. Extract context and real visual assets from URL
   let source;
@@ -126,6 +158,8 @@ export async function buildCreativeScript(
     transcript: effectiveTranscript,
     sceneTexts,
     srtContent,
+    asrCues: asrAligned?.cues,
+    asrMismatchWarning: asrAligned?.mismatchWarning,
   });
 
   // Verify timeline sanity
