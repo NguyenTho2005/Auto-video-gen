@@ -41,25 +41,83 @@ export function voiceConfig(voice: Script['voice']): Config {
     cfg.elevenlabsModelId = process.env.ELEVENLABS_MODEL_ID && process.env.ELEVENLABS_MODEL_ID !== 'eleven_multilingual_v2' ? process.env.ELEVENLABS_MODEL_ID : 'eleven_flash_v2_5';
   }
   if (cfg.ttsProvider === 'lucylab') cfg.lucylabVoiceId = voice.voiceId;
+  if (voice.normalizeLoudness) cfg.normalizeLoudness = true;
   return cfg;
+}
+
+/** M9 requirement 4: real word timings for ZeroTTS via local ASR (M8).
+ * When ASR is unavailable or fails, callers fall back to estimateWordTimings (low). */
+let asrClientOverride: import('../asr/types.js').AsrClient | null = null;
+export function setAsrTimingClientForTest(client: import('../asr/types.js').AsrClient | null){ asrClientOverride = client; }
+export function clearAsrTimingClientForTest(){ asrClientOverride = null; }
+
+export async function resolveZeroTtsWordTiming(
+  audioPath: string,
+  spokenText: string,
+  displayText: string,
+): Promise<TtsTimingResult | undefined> {
+  if (process.env.ZEROTTS_WORD_TIMING === 'off') return undefined;
+  let client = asrClientOverride;
+  if (!client) {
+    try {
+      const { asrInstalled, FasterWhisperClient } = await import('../asr/faster-whisper-client.js');
+      if (!asrInstalled()) return undefined;
+      client = new FasterWhisperClient();
+    } catch { return undefined; }
+  }
+  try {
+    const result = await client.transcribe(audioPath, { language: 'vi' });
+    if (!result.words.length) return undefined;
+    const asrTiming: TtsTimingResult = { accuracy: 'high', words: result.words.map(w=>({text:w.text,startMs:w.startMs,endMs:w.endMs})) };
+    // Align ASR timings back to the display text (script), case-insensitive (M8 path).
+    const aligned = spokenText === displayText ? asrTiming : alignSpokenWords(displayText, asrTiming, { caseInsensitive: true });
+    return aligned.words.length ? aligned : undefined;
+  } catch { return undefined; }
+}
+
+async function applyLoudnormMp3(input: string, output: string){
+  // Two-pass measure, then apply (same target as ZeroTTS in-client normalization).
+  let measure: any;
+  try{
+    const {stderr}=await exec('ffmpeg',['-nostats','-v','info','-y','-i',input,'-af','loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json','-f','null','-']);
+    const cut=stderr.slice(stderr.lastIndexOf('{'),stderr.lastIndexOf('}')+1);
+    if(cut) measure=JSON.parse(cut);
+  }catch{ /* fallback single pass */ }
+  const filt = measure?.input_i
+    ? `loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=${measure.input_i}:measured_TP=${measure.input_tp}:measured_LRA=${measure.input_lra}:measured_thresh=${measure.input_thresh}:offset=${measure.target_offset||'0'}:linear=true`
+    : 'loudnorm=I=-16:TP=-1.5:LRA=11';
+  await exec('ffmpeg',['-v','error','-y','-i',input,'-af',filt,'-ar','44100','-c:a','libmp3lame','-b:a','192k',output]);
 }
 
 /** Native speed on Edge/Vbee; pitch-preserving tempo for other providers. */
 export function studioTts(cfg: Config, voice: Script['voice']): TtsClient {
   const client = createTtsClient(cfg);
   const tempo = voice.settingsSource === 'script' && ['elevenlabs', 'lucylab', 'zerotts'].includes(cfg.ttsProvider) ? voice.speed : 1;
-  if (tempo === 1) return client;
+  const normalize = cfg.normalizeLoudness && cfg.ttsProvider !== 'zerotts'; // ZeroTTS already normalizes in-client
+  if (tempo === 1 && !normalize) return client;
   return { async generate(text, out, srt) {
     const raw = out + '.tempo-source.mp3';
     try {
       const timing = await client.generate(text, raw, srt);
-      await exec('ffmpeg', ['-v', 'error', '-y', '-i', raw, '-af', `atempo=${tempo}`, '-c:a', 'libmp3lame', '-b:a', '192k', out]);
+      const filters: string[] = [];
+      if (tempo !== 1) filters.push(`atempo=${tempo}`);
+      const staged = out + '.staged.mp3';
+      if (filters.length) {
+        await exec('ffmpeg', ['-v', 'error', '-y', '-i', raw, '-af', filters.join(','), '-c:a', 'libmp3lame', '-b:a', '192k', staged]);
+      } else {
+        await exec('ffmpeg', ['-v', 'error', '-y', '-i', raw, '-c:a', 'libmp3lame', '-b:a', '192k', staged]);
+      }
+      if (normalize) await applyLoudnormMp3(staged, out);
+      else await exec('ffmpeg', ['-v', 'error', '-y', '-i', staged, '-c:a', 'libmp3lame', '-b:a', '192k', out]);
+      await rm(staged, { force: true });
       if (srt && existsSync(srt)) {
+        const scale = tempo === 1 ? 1 : tempo;
         const cues = parseSrt(await readFile(srt, 'utf8')).map(c => ({ ...c,
-          startMs: Math.round(c.startMs / tempo), endMs: Math.round(c.endMs / tempo),
-          startSec: c.startSec / tempo, endSec: c.endSec / tempo }));
+          startMs: Math.round(c.startMs / scale), endMs: Math.round(c.endMs / scale),
+          startSec: c.startSec / scale, endSec: c.endSec / scale }));
         await writeFile(srt, generateSrt(cues));
       }
+      if (tempo === 1) return timing;
       return timing ? { ...timing, words: timing.words.map(w => ({ ...w, startMs: Math.round(w.startMs / tempo), endMs: Math.round(w.endMs / tempo) })) } : timing;
     } finally { await rm(raw, { force: true }); }
   } };
@@ -67,7 +125,7 @@ export function studioTts(cfg: Config, voice: Script['voice']): TtsClient {
 
 export function speechFingerprint(text: string, cfg: Config, speed: number, pronunciation?: PronunciationMode, overrides?: LexiconMap, prepared?:string): string {
   // Credentials never enter persisted cache metadata.
-  const settings = { timingRevision:cfg.ttsProvider==='edge-tts'?'word-boundary-v2':undefined,displayText:cfg.ttsProvider==='edge-tts'?text:undefined, provider: cfg.ttsProvider, zero: [cfg.zeroTtsVoice,ZEROTTS_REVISION], speed, edge: [cfg.edgeTtsVoice, cfg.edgeTtsRate, cfg.edgeTtsPitch, cfg.edgeTtsVolume],
+  const settings = { timingRevision:cfg.ttsProvider==='edge-tts'?'word-boundary-v2':cfg.ttsProvider==='zerotts'?'asr-aligned-v1':undefined,displayText:cfg.ttsProvider==='edge-tts'?text:undefined, provider: cfg.ttsProvider, normalizeLoudness: Boolean(cfg.normalizeLoudness) || cfg.ttsProvider==='zerotts', zero: [cfg.zeroTtsVoice,ZEROTTS_REVISION], speed, edge: [cfg.edgeTtsVoice, cfg.edgeTtsRate, cfg.edgeTtsPitch, cfg.edgeTtsVolume],
     eleven: [cfg.elevenlabsVoiceId, cfg.elevenlabsModelId, cfg.elevenlabsEndpoint],
     vbee: [cfg.vbeeVoiceCode, cfg.vbeeSpeedRate, cfg.vbeeEndpoint], lucy: [cfg.lucylabVoiceId, cfg.lucylabEndpoint] };
   return createHash('sha256').update(JSON.stringify({ text: prepared??speechText(text, pronunciation==='smart'?'lexicon':pronunciation, overrides), normalizer:pronunciation==='smart'?SMART_SPEECH_REVISION:undefined, settings })).digest('hex');
@@ -93,7 +151,15 @@ async function cachedSpeechLocal(text: string, out: string, cfg: Config, speed: 
     try {
       const generated = await client.generate(spoken, temp, srt);
       const duration = await getDurationSec(temp);
-      timing = generated && generated.words.length ? (spoken===text?generated:alignSpokenWords(text,generated)) : { accuracy: 'low', words: estimateWordTimings(text, duration) };
+      if (generated && generated.words.length) {
+        timing = spoken===text?generated:alignSpokenWords(text,generated);
+      } else if (cfg.ttsProvider==='zerotts') {
+        // M9.4: try real ASR timings; on any failure fall back to low (legacy behaviour).
+        const asr = await resolveZeroTtsWordTiming(temp, spoken, text);
+        timing = asr ?? { accuracy: 'low', words: estimateWordTimings(text, duration) };
+      } else {
+        timing = { accuracy: 'low', words: estimateWordTimings(text, duration) };
+      }
       await rename(temp, out);
       await writeFile(wordsFile, JSON.stringify(timing.words));
       await writeFile(metaFile, JSON.stringify({ fingerprint, accuracy: timing.accuracy }));

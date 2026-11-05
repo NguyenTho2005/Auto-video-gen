@@ -322,6 +322,8 @@ export const ScriptSchema = z.object({
     uploadId: z.string().uuid().optional(),
     captionsSrt: z.string().max(100000).optional(),
     sceneBoundaries: z.array(z.number().positive()).max(23).optional(),
+    /** M9: opt-in loudness normalization for non-ZeroTTS providers (ZeroTTS is always normalized). */
+    normalizeLoudness: z.boolean().optional(),
   }),
   scenes: z
     .array(Scene)

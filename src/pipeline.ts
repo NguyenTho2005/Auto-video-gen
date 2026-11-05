@@ -139,9 +139,19 @@ export async function runPipeline(scriptPath: string): Promise<void> {
   await mkdir(voiceDir, { recursive: true });
   const imported = script.voice.uploadId ? await prepareImportedVoice(script, outputDir) : undefined;
   const ttsClient = imported ? undefined : studioTts(cfg, script.voice);
+  const totalScenes = script.scenes.length;
+  let scenesDone = 0;
+  const ttsStartedAt = Date.now();
   const sceneAudioPromises = imported ? imported.scenes.map(a => Promise.resolve(a)) : script.scenes.map(scene =>
-    limit(async () => ({ id: scene.id, ...await cachedSpeech(scene.voiceText,
-      join(voiceDir, `scene-${scene.id}.mp3`), cfg, script.voice.speed, ttsClient!, script.voice.pronunciation, script.voice.pronunciationOverrides) })));
+    limit(async () => {
+      const out = await cachedSpeech(scene.voiceText,
+        join(voiceDir, `scene-${scene.id}.mp3`), cfg, script.voice.speed, ttsClient!, script.voice.pronunciation, script.voice.pronunciationOverrides);
+      scenesDone++;
+      const elapsed = (Date.now() - ttsStartedAt) / 1000;
+      const remaining = scenesDone > 0 ? Math.round(elapsed / scenesDone * (totalScenes - scenesDone)) : 0;
+      log.info(`TTS cảnh ${scenesDone}/${totalScenes} (scene-${scene.id}) xong — ${elapsed.toFixed(0)}s, ETA còn ~${remaining}s`);
+      return { id: scene.id, ...out };
+    }));
 
   let [imgResult, mediaResult, sceneAudio] = await Promise.all([
     imgPromise,

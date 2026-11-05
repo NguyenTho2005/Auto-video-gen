@@ -2,7 +2,7 @@ import {prepareSpeechText,preparedPronunciationReport} from '../tts/smart-pronun
 import {sceneBlocks,referenceSettings} from '../render/reference-design.js';
 import {applyChannelOutro} from "../script/channel-outro.js";
 import {sceneMediaEntries} from '../media/media-manager.js';
-import {zeroTtsInstalled} from "../tts/zerotts-client.js";
+import {zeroTtsDiagnostics} from "../tts/zerotts-client.js";
 import {ZERO_VOICES} from "../tts/zerotts-settings.js";
 import {stripCssImports} from "../render/css.js";
 import express from 'express';
@@ -118,13 +118,15 @@ studioRouter.get('/visuals/:id/file',async(req,res)=>{
   try{res.type('png').sendFile((await readVisual(String(req.params.id))).path,{dotfiles:'allow'});}
   catch{res.status(404).json({error:'Không tìm thấy ảnh.'});}
 });
-studioRouter.get('/options', (_req, res) => {
+studioRouter.get('/options', async (_req, res) => {
+  const zero = await zeroTtsDiagnostics();
   res.json({ providers: [
     { id: 'edge-tts', name: 'Edge TTS · dùng ngay', ready: true, voiceId: 'vi-VN-NamMinhNeural' },
     { id: 'vbee', name: 'Vbee', ready: Boolean(process.env.VBEE_APP_ID && process.env.VBEE_ACCESS_TOKEN), voiceId: process.env.VBEE_VOICE_CODE || 'n_hanoi_male_protrainer_education_vc' },
     { id: 'elevenlabs', name: 'ElevenLabs', ready: Boolean(process.env.ELEVENLABS_API_KEY), voiceId: process.env.ELEVENLABS_VOICE_ID || '' },
     { id: 'lucylab', name: 'LucyLab', ready: Boolean(process.env.VIETNAMESE_API_KEY), voiceId: process.env.VIETNAMESE_VOICEID || '' },
-    {id:'zerotts',name:'ZeroTTS · Tiếng Việt local',ready:zeroTtsInstalled(),voiceId:'quangminh',voices:ZERO_VOICES},
+    {id:'zerotts',name:'ZeroTTS · Tiếng Việt local',ready:zero.state==='ready',voiceId:'quangminh',voices:ZERO_VOICES,
+     status:zero.state,detail:zero.detail,loadingSec:zero.loadingSec},
   ] });
 });
 studioRouter.post('/uploads', express.raw({ type: 'application/octet-stream', limit: '30mb' }), async (req, res) => {

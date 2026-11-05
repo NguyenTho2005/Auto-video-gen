@@ -57,6 +57,9 @@ export interface Config {
 
   /** Optional TikTok safe zone overlay preview (M5) */
   safeZoneOverlay: boolean;
+
+  /** M9: apply loudness normalization to TTS output (ZeroTTS does this in-client). */
+  normalizeLoudness: boolean;
 }
 
 function intDefault(name: string, def: number): number {
@@ -184,5 +187,6 @@ export function loadConfig(override?: { provider: TtsProvider; voiceId?: string 
       brandData.safeZoneOverlay ||
       false
     ),
+    normalizeLoudness: process.env.VOICE_NORMALIZE_LOUDNESS === "1" || process.env.VOICE_NORMALIZE_LOUDNESS === "true",
   };
 }
