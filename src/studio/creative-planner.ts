@@ -6,6 +6,8 @@ import { cleanLlmJson } from "../script/generator.js";
 import { normalizeText } from "../captions/audio-aligner.js";
 import { log } from "../utils/logger.js";
 import type { VisualAsset } from "./visuals.js";
+import { FlexBlock } from "../render/flex-blocks.js";
+import { getLayout, layoutMenu, validateFlexData } from "../render/layouts/registry.js";
 
 export interface CreativePlannerParams {
   transcript: string;
@@ -81,6 +83,142 @@ export function condenseVisualText(
   return shortened || fallback;
 }
 
+/** LLM text is clipped, never trusted as HTML. */
+function flexText(value: unknown, max: number): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+const FLEX_BLOCK_TONES = ["accent", "mint", "warn", "violet", "muted"];
+
+/** Preserve only schema-valid optional metadata from the LLM plan. */
+function normalizeFlexBlock(raw: any): any | null {
+  const block = normalizeFlexBlockCore(raw);
+  if (!block) return null;
+  const id = typeof raw.id === "string" && /^[a-z][a-z0-9-]{0,49}$/.test(raw.id) ? raw.id : undefined;
+  const tone = FLEX_BLOCK_TONES.includes(raw.tone) ? raw.tone : undefined;
+  return {...block, ...(id ? {id} : {}), ...(tone ? {tone} : {})};
+}
+
+function normalizeFlexBlockCore(raw: any): any | null {
+  if (!raw || typeof raw !== "object") return null;
+  const kind = String(raw.kind ?? raw.type ?? "").toLowerCase().trim();
+  const items = (value: any): any[] => Array.isArray(value) ? value : [];
+  switch (kind) {
+    case "heading": {
+      const text = flexText(raw.text ?? raw.title ?? raw.headline, 80);
+      if (!text) return null;
+      return {kind: "heading", text, eyebrow: raw.eyebrow ? flexText(raw.eyebrow, 30) : undefined};
+    }
+    case "body": {
+      const text = flexText(raw.text ?? raw.body, 240);
+      return text ? {kind: "body", text} : null;
+    }
+    case "bullets": {
+      const list = items(raw.items ?? raw.bullets)
+        .map(item => flexText(typeof item === "string" ? item : item?.text, 60))
+        .filter(Boolean).slice(0, 6);
+      return list.length ? {kind: "bullets", items: list.map(text => ({text}))} : null;
+    }
+    case "metric": {
+      const value = flexText(raw.value ?? raw.number, 20);
+      const label = flexText(raw.label ?? raw.title, 40);
+      if (!value || !label) return null;
+      return {
+        kind: "metric",
+        value,
+        label,
+        detail: raw.detail ? flexText(raw.detail, 60) : undefined,
+        delta: raw.delta ? flexText(raw.delta, 16) : undefined,
+      };
+    }
+    case "steps": {
+      const list = items(raw.items ?? raw.steps)
+        .map((item: any) => ({label: flexText(item?.label ?? item, 28), detail: item?.detail ? flexText(item.detail, 70) : undefined}))
+        .filter((item: any) => item.label)
+        .slice(0, 5);
+      return list.length >= 2 ? {kind: "steps", items: list} : null;
+    }
+    case "quote": {
+      const text = flexText(raw.text ?? raw.quote, 180);
+      if (!text) return null;
+      return {
+        kind: "quote",
+        text,
+        author: raw.author ? flexText(raw.author, 40) : undefined,
+        role: raw.role ? flexText(raw.role, 50) : undefined,
+        source: raw.source ? flexText(raw.source, 60) : undefined,
+      };
+    }
+    case "compare": {
+      const left = {label: flexText(raw.left?.label, 30), value: flexText(raw.left?.value, 40)};
+      const right = {label: flexText(raw.right?.label, 30), value: flexText(raw.right?.value, 40)};
+      if (!left.label || !left.value || !right.label || !right.value) return null;
+      return {kind: "compare", left, right, winner: raw.winner === "left" || raw.winner === "right" ? raw.winner : undefined};
+    }
+    case "callout": {
+      const text = flexText(raw.text ?? raw.statement, 120);
+      return text ? {kind: "callout", text, tag: raw.tag ? flexText(raw.tag, 24) : undefined} : null;
+    }
+    case "media":
+      return {kind: "media", caption: raw.caption ? flexText(raw.caption, 60) : undefined, fit: raw.fit === "cover" ? "cover" : "contain"};
+    case "tags": {
+      const list = items(raw.items ?? raw.tags).map((item: any) => flexText(item, 24)).filter(Boolean).slice(0, 6);
+      return list.length ? {kind: "tags", items: list} : null;
+    }
+    case "source": {
+      const label = flexText(raw.label ?? "Nguồn", 40);
+      const value = flexText(raw.value ?? raw.source, 80);
+      return value ? {kind: "source", label, value} : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Converts an LLM flex plan into something the registry can render. Anything
+ * that cannot be proven valid falls back to the legacy callout instead of
+ * producing a broken composition.
+ */
+function normalizeFlexTemplate(td: any, media: any): any | null {
+  let blocks: any[] = (Array.isArray(td.blocks) ? td.blocks : [])
+    .map(normalizeFlexBlock)
+    .filter(Boolean)
+    .map((block: any) => {
+      try {
+        return FlexBlock.safeParse(block).success ? block : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+
+  if (!blocks.length) return null;
+
+  let layout = getLayout(String(td.layout ?? ""));
+  if (!layout) {
+    const kinds = new Set(blocks.map(block => block.kind));
+    if ((blocks.filter(block => block.kind === "metric").length) >= 2) layout = getLayout("metric-grid");
+    else if (kinds.has("steps")) layout = getLayout("timeline");
+    else if (kinds.has("quote")) layout = getLayout("quote-card");
+    else if (kinds.has("media") && (kinds.has("body") || kinds.has("bullets"))) layout = getLayout("split-media");
+  }
+  if (!layout) return null;
+
+  if (layout.mediaSlots > 0 && media && !blocks.some(block => block.kind === "media")) {
+    blocks = [...blocks, {kind: "media", caption: undefined, fit: "contain"}];
+  }
+  blocks = blocks.filter(block => layout!.accepts.includes(block.kind)).slice(0, layout.budget.maxBlocks);
+  const variant = layout.variants.includes(String(td.variant)) ? String(td.variant) : layout.defaultVariant;
+  const candidate = {template: "flex" as const, layout: layout.id, variant, blocks};
+  try {
+    validateFlexData(candidate as any);
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
 const CREATIVE_PLANNER_SYSTEM_PROMPT = `
 Bạn là Đạo diễn Hình ảnh & Chuyển động (AI Visual Director) cho video công nghệ ngắn 9:16 (TikTok/Reels/Shorts).
 Nhiệm vụ: Bạn nhận được kịch bản lời đọc (Voice Script) và danh sách tài nguyên hình ảnh thực tế (ASSETS ĐANG CÓ). Bạn phải phân tích ngữ nghĩa từng câu để chọn bố cục thị giác và đồ họa minh chứng phù hợp nhất.
@@ -129,6 +267,32 @@ QUY TẮC BẮT BUỘC:
      { "template": "phone-mockup", "title": "GIAO DIỆN DEMO", "screenSrc": "previewUrl_của_asset", "caption": "Giao diện kiểm thử" }
    * "outro" (Chỉ dùng cho cảnh cuối):
      { "template": "outro", "ctaTop": "Khám phá repo ngay", "channelName": "DevPeek36", "source": "github.com" }
+
+4b. BỐ CỤC FLEX (ưu tiên khi nội dung cần nhiều block có cấu trúc):
+   Chọn "template": "flex" khi một cảnh cần kết hợp tiêu đề + số liệu + ghi chú + nguồn.
+   Mỗi cảnh flex có "layout", "variant" (tuỳ chọn) và "blocks" (1-10 block).
+   Danh sách layout hợp lệ:
+${layoutMenu()}
+   Block hợp lệ (trường bắt buộc):
+   - { "kind": "heading", "text": "...", "eyebrow": "NHÃN NGẮN" }
+   - { "kind": "body", "text": "Một đoạn ngắn, không lặp nguyên văn lời đọc." }
+   - { "kind": "bullets", "items": [{ "text": "Ý 1" }, { "text": "Ý 2" }] }
+   - { "kind": "metric", "value": "82,7%", "label": "Tăng trưởng", "detail": "So với cùng kỳ", "delta": "+12%" }
+   - { "kind": "steps", "items": [{ "label": "Bước 1", "detail": "Mô tả ngắn" }, { "label": "Bước 2" }] }
+   - { "kind": "quote", "text": "...", "author": "...", "role": "...", "source": "..." }
+   - { "kind": "compare", "left": { "label": "Trước", "value": "..." }, "right": { "label": "Sau", "value": "..." }, "winner": "right" }
+   - { "kind": "callout", "text": "...", "tag": "LƯU Ý" }
+   - { "kind": "media", "caption": "Ảnh từ nguồn", "fit": "contain" }
+   - { "kind": "tags", "items": ["Nhanh", "Mã nguồn mở"] }
+   - { "kind": "source", "label": "Nguồn", "value": "github.com/..." }
+   Chỉ dùng block thuộc layout đã chọn. Không đặt HTML, không bịa số liệu.
+   Ví dụ:
+   { "template": "flex", "layout": "metric-grid", "variant": "cards", "blocks": [
+     { "kind": "heading", "text": "NHỮNG CON SỐ ĐÁNG CHÚ Ý", "eyebrow": "DỮ LIỆU TỪ NGUỒN" },
+     { "kind": "metric", "value": "82,7%", "label": "Tăng trưởng", "tone": "mint" },
+     { "kind": "metric", "value": "3,2×", "label": "Tốc độ xử lý" },
+     { "kind": "source", "label": "Nguồn", "value": "Tài liệu dự án" }
+   ] }
 
 5. GÁN MEDIA THỰC TẾ (TẬN DỤNG ASSETS ĐANG CÓ):
    - Khi cảnh đề cập đến ảnh sơ đồ (overview), dự báo (prediction), hoặc kết quả backtest, HÃY gán vào trường "media":
@@ -244,7 +408,14 @@ export function repairAndNormalizeLlmPlan(
       };
     } else {
       // Body templates
-      if (td.template === "data-flow") {
+      if (td.template === "flex") {
+        const flex = normalizeFlexTemplate(td, s.media);
+        td = flex ?? {
+          template: "callout",
+          statement: condenseVisualText(td.blocks?.[0]?.text || s.voiceText, 5, "TIÊU ĐIỂM CÔNG NGHỆ"),
+          tag: "ĐIỂM CHÍNH",
+        };
+      } else if (td.template === "data-flow") {
         const nodes = Array.isArray(td.nodes) && td.nodes.length >= 2
           ? td.nodes.slice(0, 3).map((n: any, nIdx: number) => ({
               label: condenseVisualText(n.label || `BƯỚC ${nIdx + 1}`, 3, `BƯỚC ${nIdx + 1}`),
