@@ -24,4 +24,9 @@
 - Ý chính/số liệu: Bauhaus, Tech Editorial.
 - Khái niệm chuyển đổi: Shape Morph hoặc Liquid.
 
+Với cảnh cần nhiều block có cấu trúc, chọn nhóm **Flex** khi duyệt cảnh:
+**Lưới số liệu** cho KPI, **Dòng thời gian** cho quy trình, **Trích dẫn** cho
+nhận định và **Chia đôi media** cho nội dung cạnh ảnh. Các bố cục này dùng
+chung schema và có biến thể/mật độ riêng; xem `docs/them-template-va-tu-lieu.md`.
+
 Đây là gợi ý; mọi template trong gallery đều nhận cùng kịch bản repo. Chọn phong cách không tự bổ sung thông tin thiếu trong nguồn. Không hứa một video ngắn kể hết một repo lớn: bảng đối chiếu giúp bạn quyết định ý nào cần giải thích thêm.

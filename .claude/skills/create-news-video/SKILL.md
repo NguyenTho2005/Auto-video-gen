@@ -201,6 +201,58 @@ In addition to core news templates (`hook`, `comparison`, `stat-hero`, `feature-
    }
    ```
 
+### Flex layouts (schema v3)
+
+Use `template: "flex"` when one scene needs a structured mix of heading,
+metrics, steps, quote or media instead of a single fixed template. Keep the
+same `voiceText`; flex only changes the visual composition.
+
+```json
+{
+  "id": "body-metrics",
+  "type": "body",
+  "voiceText": "Ba con số cho thấy tốc độ xử lý tăng mạnh và thời gian dựng video ngắn lại.",
+  "templateData": {
+    "template": "flex",
+    "layout": "metric-grid",
+    "variant": "spotlight",
+    "blocks": [
+      { "kind": "heading", "text": "Những con số đáng chú ý", "eyebrow": "DỮ LIỆU TỪ NGUỒN" },
+      { "kind": "metric", "value": "82,7%", "label": "Tăng trưởng", "detail": "So với cùng kỳ", "tone": "mint" },
+      { "kind": "metric", "value": "3,2×", "label": "Tốc độ xử lý", "tone": "accent" },
+      { "kind": "source", "label": "Nguồn", "value": "Tài liệu dự án" }
+    ]
+  },
+  "design": { "variant": "spotlight", "skin": "hud", "motion": "tech", "density": "balanced" }
+}
+```
+
+| Layout | Variants | Main blocks |
+|---|---|---|
+| `metric-grid` | `cards`, `spotlight`, `compact` | heading, body, 2–4 metric, tags, source |
+| `quote-card` | `editorial`, `glass`, `split` | heading, quote, body, media, source |
+| `timeline` | `vertical`, `horizontal`, `compact` | heading, steps (2–5), body, source |
+| `split-media` | `media-left`, `media-right`, `media-top` | heading, body/bullets, media, callout, tags, source |
+
+Block kinds: `heading`, `body`, `bullets`, `metric`, `steps`, `quote`,
+`compare`, `callout`, `media`, `tags`, `source`. Each block may have a stable
+`id` (default `block-<index>`) used by `scene.blockTiming`, plus optional
+`tone` (`accent`, `mint`, `warn`, `violet`, `muted`). The registry rejects
+unknown layouts, variants, block kinds and over-budget content.
+
+- `design` is optional: `variant`, `skin` (style-pack id), `motion`
+  (`calm`, `editorial`, `dynamic`, `kinetic`, `cinematic`, `tech`, `playful`)
+  and `density` (`airy`, `balanced`, `dense`). Omit it to use layout defaults.
+- `media` blocks use the scene's `media` asset; one media record per scene.
+- Timing: prefer `scene.blockTiming` (`{ "blockId": { "atSec": 1.8 } }`, or
+  `phrase` plus `occurrence`). Without it, blocks are matched to narration
+  timestamps. Motion is finite and seekable.
+- Keep visual text short, never copy the voice line verbatim, and never invent
+  numbers. Use `schemaVersion: 3` only when the script contains a flex scene;
+  older scripts without it remain valid.
+- Use flex for 1–3 scenes in a short video. Hook and outro stay on their fixed
+  templates.
+
 **Hook (most important — gets first 3 seconds of viewer attention):**
 - Must contain a claim, statistic, or curious question
 - NEVER generic ("Hôm nay chúng ta sẽ nói về..." is wrong)

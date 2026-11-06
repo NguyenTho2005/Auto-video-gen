@@ -1,6 +1,8 @@
 # Dùng thiết kế video mẫu
 
-Tạo video mới từ URL, văn bản, CLI hoặc JSON trong web: mặc định dùng Studio tối theo video mẫu. Gallery chính là 16 bố cục trong cùng thiết kế, không còn ép nội dung đổi sang màu/hiệu ứng MG khác nhau. Chọn thumbnail chỉ xem thử bố cục; hệ thống vẫn phối cảnh theo nội dung.
+Tạo video mới từ URL, văn bản, CLI hoặc JSON trong web: mặc định dùng Studio tối theo video mẫu. Gallery có 16 bố cục cũ trong cùng thiết kế và 4 bố cục Flex mới (Lưới số liệu, Trích dẫn, Dòng thời gian, Chia đôi media), không còn ép nội dung đổi sang màu/hiệu ứng MG khác nhau. Chọn thumbnail chỉ xem thử bố cục; hệ thống vẫn phối cảnh theo nội dung.
+
+Bố cục Flex dùng `template: "flex"` với các block có cấu trúc và biến thể riêng; xem cú pháp, block hợp lệ và `scene.design` trong [them-template-va-tu-lieu.md](them-template-va-tu-lieu.md#bố-cục-flex-schema-v3).
 
 1. Chọn **Cách mở đầu**, **Cách kể nội dung**, **Nhịp chuyển động**. Các lựa chọn độc lập với bố cục từng cảnh và số giây mục tiêu.
 2. Tạo bản nháp và chọn hook; sửa lời đọc, chữ, ảnh, code và chuyển cảnh trong bước duyệt.

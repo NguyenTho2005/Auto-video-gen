@@ -207,7 +207,8 @@ CLI giữ preset cũ để tương thích; ba mức thời lượng ở trên l�
 
 ## 9. Tài liệu và ghi công
 
-- [Voice Studio](docs/huong-dan-voice-studio.md), [ZeroTTS](docs/huong-dan-zerotts.md), [storyboard](docs/huong-dan-storyboard.md), [chọn template](docs/huong-dan-chon-template.md).
+- [Voice Studio](docs/huong-dan-voice-studio.md), [ZeroTTS](docs/huong-dan-zerotts.md), [storyboard](docs/huong-dan-storyboard.md), [chọn template](docs/huong-dan-chon-template.md), [bố cục flex](docs/them-template-va-tu-lieu.md).
+- [ADR bố cục flex](docs/adr-flex-layouts.md): block, registry, design token, motion recipe và schema v3.
 - [Kiến trúc Radar](docs/adr-0007-ai-news-radar.md), [quyết định đóng gói Docker](docs/adr-0008-portable-installation.md).
 - [README đầy đủ cũ](README.full.md) và [English README cũ](README.en.md) giữ để tham khảo lịch sử; một số preset/giao diện khác bản Studio hiện tại.
 
