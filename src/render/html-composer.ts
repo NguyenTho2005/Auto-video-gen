@@ -1,8 +1,10 @@
 import {matchingGithubStars} from '../script/github-stars.js';
 import {renderReferenceScene} from './reference-scenes.js';
-import {referenceSettings,decorateReferenceBlocks} from './reference-design.js';
+import {referenceSettings,decorateReferenceBlocks,FLEX_TIMING_PROFILE} from './reference-design.js';
+import {renderFlexScene} from './layouts/render.js';
 import {sourceLabel} from "./source-label.js";
 import {packDecor,packVariables} from "./style-packs.js";
+import {DEFAULT_MOTION_PRESET,MOTION_PRESETS,MOTION_RECIPES} from './motion/presets.js';
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,14 +78,19 @@ export function composeHtml(args: ComposeArgs): string {
   const totalDuration = cursor;
 
   const reference = referenceSettings(script);
+  const motionPreset = script.motionPreset ?? DEFAULT_MOTION_PRESET;
   const dynamic = !reference && script.visualStyle === "tech-editorial" && script.motionPreset === "dynamic";
+  const flex = script.scenes.some(scene => scene.templateData.template === 'flex');
 
   // Render scenes
   const sceneHtml = timing.map(({ scene, start, duration },sceneIndex) => {
     scene={...scene,githubStarLeadIn:scene.templateData.template==='hook'&&Boolean(matchingGithubStars(script))};
     const mediaRecord = args.mediaMap?.[scene.id];
     const gallery=scene.templateData.template==='image-gallery'?scene.templateData.images.map((_,i)=>i===0&&mediaRecord?mediaRecord:args.mediaMap?.[`${scene.id}:gallery:${i}`]):[];
-    let sceneMarkup = reference ? renderReferenceScene({scene,start,duration,script,media:mediaRecord,gallery,channelLogoPath,tiktok}) : renderScene(scene, start, duration, bgImageRelPath, tiktok, tiktokAvatar, mediaRecord, script.visualStyle, dynamic, channelLogoPath,gallery);
+    const isFlex = scene.templateData.template === 'flex';
+    let sceneMarkup = isFlex
+      ? renderFlexScene({scene,start,duration,script,media:mediaRecord,channelLogoPath,tiktok})
+      : reference ? renderReferenceScene({scene,start,duration,script,media:mediaRecord,gallery,channelLogoPath,tiktok}) : renderScene(scene, start, duration, bgImageRelPath, tiktok, tiktokAvatar, mediaRecord, script.visualStyle, dynamic, channelLogoPath,gallery);
     if(!reference && script.templatePack && !['editorial','explainer'].includes(script.templatePack))sceneMarkup=sceneMarkup.replace(/(<div class="scene clip"[\s\S]*?>)/,'$1'+packDecor(script.templatePack));
     if (dynamic) {
       const index = sceneIndex;
@@ -93,7 +100,8 @@ export function composeHtml(args: ComposeArgs): string {
         <div class="scene-progress"><div class="scene-progress-fill"></div></div>`;
       sceneMarkup = sceneMarkup.replace(/(<div class="scene clip"[\s\S]*?>)/, '$1' + decor);
     }
-    if(reference)sceneMarkup=decorateReferenceBlocks(sceneMarkup,scene,start,duration,args.captionCues||[],reference);
+    if(isFlex)sceneMarkup=decorateReferenceBlocks(sceneMarkup,scene,start,duration,args.captionCues||[],FLEX_TIMING_PROFILE);
+    else if(reference)sceneMarkup=decorateReferenceBlocks(sceneMarkup,scene,start,duration,args.captionCues||[],reference);
     return sceneMarkup;
   }).join("\n");
 
@@ -129,15 +137,29 @@ export function composeHtml(args: ComposeArgs): string {
     : "";
 
   const referenceCss = reference ? `<style>${readFileSync(join(TPL_DIR,'styles.reference.css'),'utf8')}</style>` : '';
+  const flexCss = flex ? `<style>${readFileSync(join(TPL_DIR,'styles.flex.css'),'utf8')}</style>` : '';
   const animJs = readFileSync(join(TPL_DIR, "animations.js"), "utf8");
+  const motionConfig = flex
+    ? `<script id="motion-config" type="application/json">${JSON.stringify({presets:MOTION_PRESETS,recipes:MOTION_RECIPES,default:motionPreset}).replace(/</g,'\\u003c')}</script>`
+    : '';
 
   const tpl = readFileSync(join(TPL_DIR, "base.html.tmpl"), "utf8");
   const base = script.visualStyle === 'tech-editorial'
     ? tpl.replace(/<link[^>]+(?:fonts.googleapis.com|fonts.gstatic.com)[^>]*>/g, '')
       .replace('https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js', 'gsap.min.js')
     : tpl;
-  return base.replace('</head>',referenceCss+'</head>')
-    .replace('<body>', script.visualStyle === 'tech-editorial' ? `<body class="tech-editorial${reference ? " reference-design" : ""}${dynamic ? " motion-dynamic" : ""}${script.colorTheme === "midnight" ? " theme-midnight" : ""}${script.templatePack ? " pack-active pack-"+script.templatePack : ""}">` : '<body>')
+  const bodyClasses = [
+    script.visualStyle === 'tech-editorial' ? 'tech-editorial' : '',
+    reference ? 'reference-design' : '',
+    script.motionPreset && !['calm', 'dynamic'].includes(motionPreset) ? `motion-${motionPreset}` : '',
+    dynamic ? 'motion-dynamic' : '',
+    script.colorTheme === 'midnight' ? 'theme-midnight' : '',
+    script.templatePack ? `pack-active pack-${script.templatePack}` : '',
+    flex ? 'has-flex' : '',
+  ].filter(Boolean);
+  const bodyTag = bodyClasses.length ? `<body class="${bodyClasses.join(' ')}">` : '<body>';
+  return base.replace('</head>',referenceCss+flexCss+'</head>')
+    .replace('<body>', bodyTag)
     .replace('<body class="', script.templatePack ? `<body style="${packVariables(script.templatePack)}" class="` : '<body class="')
     .replace("{{TITLE}}", escapeHtml(script.metadata.title))
     .replace(/\{\{TOTAL_DURATION\}\}/g, totalDuration.toFixed(2))
@@ -145,7 +167,7 @@ export function composeHtml(args: ComposeArgs): string {
     .replace("{{SCENES}}", sceneHtml)
     .replace("{{CAPTIONS}}", captionsHtml + safeZoneHtml)
     .replace(/src="voice\.mp3"/g, `src="${audioRelPath}"`)
-    .replace('<script src="animations.js"></script>', `<script>\n${animJs}\n</script>`);
+    .replace('<script src="animations.js"></script>', `${motionConfig}\n<script>\n${animJs}\n</script>`);
 }
 
 // ── CAPTIONS LAYER (M1) ────────────────────────────────────────────────────
@@ -215,6 +237,9 @@ function renderScene(
   let layoutName: string;
 
   switch (td.template) {
+    case "flex":
+      // Flex scenes are dispatched to the layout registry before renderScene.
+      throw new Error("Flex scenes must be rendered by renderFlexScene.");
     case "data-flow":
       inner = `<div class="explainer-content semantic-content"><h2 class="explainer-title">${escapeHtml(td.title)}</h2><div class="semantic-flow">${td.nodes.map((node,i)=>`<div class="semantic-node"><span class="semantic-step">${String(i+1).padStart(2,'0')}</span><strong>${escapeHtml(node.label)}</strong><p>${escapeHtml(node.detail)}</p></div>${i<td.nodes.length-1?'<div class="semantic-link"><span>↓</span><i></i></div>':''}`).join('')}</div>${td.caption?`<p class="semantic-caption">${escapeHtml(td.caption)}</p>`:''}</div>`;
       layoutName="data-flow";break;
@@ -587,13 +612,21 @@ function buildScene(
 
   const transType = scene.transition?.type || "cut";
   const transDur = scene.transition?.duration ?? 0.3;
+  const design = scene.design;
+  const designAttrs = [
+    design?.variant ? `data-variant="${escapeHtml(design.variant)}"` : '',
+    design?.density ? `data-density="${escapeHtml(design.density)}"` : '',
+    design?.motion ? `data-motion="${escapeHtml(design.motion)}"` : '',
+    design?.skin ? `data-skin="${escapeHtml(design.skin)}"` : '',
+  ].filter(Boolean).join(' ');
+  const designStyle = design?.skin ? ` style="${packVariables(design.skin)}"` : '';
 
   return `
 <div class="scene clip" id="scene-${scene.id}"
      data-start="${start.toFixed(2)}" data-duration="${duration.toFixed(2)}" data-active="0"
      data-layout="${layoutName}" data-media="${presentation}"
      data-transition="${transType}"
-     data-transition-duration="${transDur.toFixed(2)}">
+     data-transition-duration="${transDur.toFixed(2)}"${designAttrs ? ' ' + designAttrs : ''}${designStyle}>
   ${mediaHtml}
   ${innerHtml}
   ${creditHtml}

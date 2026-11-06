@@ -12,7 +12,7 @@ import { join, dirname, basename } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import pLimit from "p-limit";
-import { ScriptSchema, type Script } from "./render/script-schema.js";
+import { ScriptSchema, type Script, schemaVersionFor } from "./render/script-schema.js";
 import { loadConfig } from "./config.js";
 import { fetchImage } from "./assets/image-fetcher.js";
 import { getDurationSec, concatWithSilence, mixSfxOntoVoice, mixBgmWithVoice, type SfxMixSpec } from "./assets/audio-tools.js";
@@ -328,7 +328,9 @@ export async function runPipeline(scriptPath: string): Promise<void> {
   log.info(`  Captions: exported ${allCues.length} cues → captions.srt & captions.json`);
 
   if (script.voice.settingsSource === 'script' || imported) {
-    script.schemaVersion = 2;
+    // Preserve the flex generation marker: writing 2 over a schema-3 script
+    // would mislabel new layouts as legacy on the next round-trip.
+    script.schemaVersion = schemaVersionFor(script);
     script.timeline = { scenes: Object.fromEntries(sceneAudio.map(a => [a.id, {
       start: sceneStarts[a.id], duration: a.durationSec + gapSec + (script.scenes.find(s => s.id === a.id)?.type === 'outro' ? outroHoldSec : 0)
     }])), captionCues: allCues.map(c => ({ start: c.startSec, end: c.endSec, text: c.text })) };

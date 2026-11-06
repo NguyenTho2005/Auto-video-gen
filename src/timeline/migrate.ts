@@ -1,4 +1,4 @@
-import type { Script, TimelineSpecType } from "../render/script-schema.js";
+import { schemaVersionFor, type Script, type TimelineSpecType } from "../render/script-schema.js";
 
 /**
  * Ước tính thời lượng nói (giây) dựa trên số từ nếu chưa có file audio thật
@@ -11,15 +11,15 @@ export function estimateVoiceDuration(text: string, speed: number = 1.0): number
 }
 
 /**
- * Chuyển đổi kịch bản v1 sang v2 (thêm schemaVersion: 2 và khối timeline)
+ * Chuyển đổi kịch bản v1 sang v2 (thêm timeline), hoặc giữ nguyên v3.
  * Hàm thuần, không đột biến đối tượng đầu vào.
  */
 export function migrateV1toV2(
   scriptV1: Script,
   audioDurations?: Record<string, number>
 ): Script {
-  const isV2 = scriptV1.schemaVersion === 2 && scriptV1.timeline !== undefined;
-  if (isV2) {
+  const hasTimeline = (scriptV1.schemaVersion === 2 || scriptV1.schemaVersion === 3) && scriptV1.timeline !== undefined;
+  if (hasTimeline) {
     return JSON.parse(JSON.stringify(scriptV1));
   }
 
@@ -52,7 +52,7 @@ export function migrateV1toV2(
 
   return {
     ...JSON.parse(JSON.stringify(scriptV1)),
-    schemaVersion: 2,
+    schemaVersion: schemaVersionFor(scriptV1),
     timeline: upgradedTimeline,
   };
 }
