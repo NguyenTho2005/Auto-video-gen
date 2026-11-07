@@ -3,6 +3,25 @@ import { randomUUID } from "node:crypto";
 import { buildCreativeScript } from "./creative-builder.js";
 import * as uploads from "./uploads.js";
 
+// SRT-only test must not depend on GitHub being reachable. Both the source
+// fetch and visual capture used to hit the network and timed out under CI.
+vi.mock("../script/source-fetcher.js", () => ({
+  fetchSourceContent: vi.fn(async (url: string) => ({
+    title: "Repo mẫu",
+    content: "Nội dung repo mẫu dùng cho kiểm thử.",
+    url,
+    domain: "github.com",
+    ogImage: null,
+  })),
+}));
+vi.mock("./visuals.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./visuals.js")>();
+  return {
+    ...actual,
+    collectGithubVisuals: vi.fn(async () => ({ assets: [], warnings: [], repo: "https://github.com/example/repo" })),
+  };
+});
+
 describe("Creative Mode - Creative Script Builder", () => {
   it("automatically derives transcript from SRT content when transcript is omitted", async () => {
     // Mock readUpload to avoid requiring a real ffprobe/ffmpeg file

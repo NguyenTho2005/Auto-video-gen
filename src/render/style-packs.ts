@@ -50,4 +50,21 @@ export function packGeometry(p:StylePack):string {
 }
 export function packDecor(id:string):string {const p=stylePack(id);if(!p.demo)return '';return `<div class="pack-art pack-motif-${p.motif}" aria-hidden="true"><svg viewBox="0 0 700 700" xmlns="http://www.w3.org/2000/svg">${packGeometry(p)}</svg></div><div class="pack-edge" aria-hidden="true"></div>`;}
 export function packPoster(id:string):string {const p=stylePack(id);return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360"><rect width="600" height="360" rx="22" fill="${p.bg}"/><g transform="translate(250,-35) scale(.57)" opacity=".8">${packGeometry(p)}</g><rect x="28" y="28" width="82" height="8" rx="4" fill="${p.accent}"/><text x="28" y="96" fill="${p.muted}" font-family="Arial,sans-serif" font-size="15" letter-spacing="3">REPO → KNOWLEDGE</text><text x="28" y="154" fill="${p.fg}" font-family="Arial,sans-serif" font-size="35" font-weight="700">${esc(p.name.split(' · ')[0])}</text><rect x="28" y="186" width="225" height="58" rx="12" fill="${p.panel}" stroke="${p.accent}" stroke-opacity=".4"/><path d="M46 208h158M46 222h110" stroke="${p.accent}" stroke-width="5"/><text x="28" y="314" fill="${p.muted}" font-family="Arial,sans-serif" font-size="17">9:16 · Adaptive template</text></svg>`;}
-export function packVariables(id:string):string {const p=stylePack(id);return `--pack-bg:${p.bg};--pack-fg:${p.fg};--pack-accent:${p.accent};--pack-second:${p.second};--pack-panel:${p.panel};--pack-muted:${p.muted}`;}
+function hexRgb(hex:string):[number,number,number]{
+ const value=hex.replace('#','');
+ const full=value.length===3?value.split('').map(c=>c+c).join(''):value;
+ const n=parseInt(full.slice(0,6),16);
+ return [(n>>16)&255,(n>>8)&255,n&255];
+}
+function rgba(hex:string,alpha:number):string{const [r,g,b]=hexRgb(hex);return `rgba(${r},${g},${b},${alpha})`;}
+function luminance(hex:string):number{const [r,g,b]=hexRgb(hex).map(v=>{const c=v/255;return c<=.03928?c/12.92:((c+.055)/1.055)**2.4;});return .2126*r+.7152*g+.0722*b;}
+/** Legacy `--pack-*` variables stay untouched; `--tpl-*` adds layout tokens. */
+export function packVariables(id:string):string {
+ const p=stylePack(id);
+ const dark=luminance(p.bg)<.42;
+ const line=dark?'#ffffff':'#000000';
+ return `--pack-bg:${p.bg};--pack-fg:${p.fg};--pack-accent:${p.accent};--pack-second:${p.second};--pack-panel:${p.panel};--pack-muted:${p.muted}`
+  +`;--tpl-bg:${p.bg};--tpl-fg:${p.fg};--tpl-accent:${p.accent};--tpl-second:${p.second};--tpl-panel:${p.panel};--tpl-muted:${p.muted}`
+  +`;--tpl-border:${rgba(line,.17)};--tpl-border-strong:${rgba(line,.29)};--tpl-soft:${rgba(line,.055)}`
+  +`;--tpl-accent-soft:${rgba(p.accent,.15)};--tpl-second-soft:${rgba(p.second,.15)};--tpl-shadow:${rgba(p.bg,.46)}`;
+}

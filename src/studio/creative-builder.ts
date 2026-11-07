@@ -178,7 +178,7 @@ export async function buildCreativeScript(
 
   // 5. Assemble complete Script
   const rawScript: any = {
-    schemaVersion: 2,
+    schemaVersion: plannedScenes.some(scene => scene.templateData.template === 'flex') ? 3 : 2,
     version: "2.0",
     directingMode: "auto",
     templatePack: templatePack || "reference",

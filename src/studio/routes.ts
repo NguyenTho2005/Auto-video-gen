@@ -9,6 +9,7 @@ import express from 'express';
 import {STYLE_PACKS,stylePack,packPoster} from '../render/style-packs.js';
 import { collectGithubVisuals, saveVisual, readVisual } from './visuals.js';
 import { TEMPLATE_CATALOG } from '../render/template-catalog.js';
+import { FLEX_CATALOG } from '../render/layout-catalog.js';
 import { randomUUID } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
@@ -48,7 +49,7 @@ studioRouter.get('/style-preview', async (req, res) => {
     if(script.templatePack==='reference')script.creative={presetId:'reference',pacingId:req.query.motion==='dynamic'?'quick':'narrated'};
     if(!req.query.pack)script.colorTheme = req.query.theme === 'midnight' ? 'midnight' : 'teal';
     if(req.query.layout){
-      const chosen=TEMPLATE_CATALOG.find(t=>t.id===req.query.layout);if(!chosen)throw new Error('Bố cục không hợp lệ.');
+      const chosen=[...TEMPLATE_CATALOG,...FLEX_CATALOG].find(t=>t.id===req.query.layout);if(!chosen)throw new Error('Bố cục không hợp lệ.');
       const source=script.scenes[chosen.id==='hook'?0:chosen.id==='outro'?script.scenes.length-1:1];
       script.scenes=[{...source,id:'preview',type:chosen.id==='hook'?'hook':chosen.id==='outro'?'outro':'body',templateData:chosen.data}];
     }
@@ -105,7 +106,7 @@ studioRouter.post('/block-plan',(req,res)=>{
   try{const scene=ScriptSchema.shape.scenes.element.parse(req.body.scene);res.json({blocks:sceneBlocks(scene)});}
   catch(err:any){res.status(400).json({error:err.message});}
 });
-studioRouter.get('/templates', (_req,res)=>res.json({templates:TEMPLATE_CATALOG}));
+studioRouter.get('/templates', (_req,res)=>res.json({templates:[...TEMPLATE_CATALOG,...FLEX_CATALOG],legacyTemplates:TEMPLATE_CATALOG,flexTemplates:FLEX_CATALOG}));
 studioRouter.post('/github-visuals', async(req,res)=>{
   try {const {url}=z.object({url:z.string().max(500)}).parse(req.body);res.json(await collectGithubVisuals(url));}
   catch(err:any){res.status(400).json({error:err.message});}

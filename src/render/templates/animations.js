@@ -22,6 +22,23 @@ window.__timelines["news-video"] = tl;
   const stage = document.getElementById("stage");
   const scenes = Array.from(stage.querySelectorAll(".scene"));
 
+  // Motion recipes are embedded by the composer as JSON so server and client
+  // cannot drift. Missing config keeps legacy scenes on their old animations.
+  const motionConfig = (() => {
+    const node = document.getElementById("motion-config");
+    if (!node) return null;
+    try { return JSON.parse(node.textContent || "{}"); } catch (_) { return null; }
+  })();
+  const fallbackMotion = {duration:.34,distance:24,stagger:.08,ease:"power2.out",scaleFrom:.95,rotateFrom:0,ambient:false,exitRatio:.06,exitMax:.2};
+  function sceneMotion(scene) {
+    const presets = (motionConfig && motionConfig.presets) || {};
+    return presets[scene.dataset.motion] || presets[motionConfig && motionConfig.default] || fallbackMotion;
+  }
+  function sceneRecipe(block) {
+    const recipes = (motionConfig && motionConfig.recipes) || {};
+    return recipes[block.dataset.motion] || null;
+  }
+
   // ── Scene dispatch ──────────────────────────────────────────────────────
   scenes.forEach((scene) => {
     const start = parseFloat(scene.dataset.start);
@@ -42,6 +59,12 @@ window.__timelines["news-video"] = tl;
       tl.set(scene, { opacity: 1 }, start);
     }
     tl.set(scene, { opacity: 0 }, start + dur);
+
+    // Flex layouts own their motion: narration-linked block reveal + recipe.
+    if (scene.dataset.flex === "1") {
+      animateFlex(scene, tl, start, dur);
+      return;
+    }
 
     if(document.body.classList.contains('reference-design')){
       animateReference(scene,tl,start,dur);
@@ -164,6 +187,126 @@ window.__timelines["news-video"] = tl;
       });
     });
   }
+  // ── FLEX LAYOUTS ────────────────────────────────────────────────────────
+  // Blocks are positioned by narration timestamps from the server. Every tween
+  // is finite and seekable; recipes only choose the shape of the entrance.
+  function animateFlex(scene, tl, start, dur) {
+    const board = scene.querySelector(".flex-board");
+    const inner = scene.querySelector(".flex-layout-inner");
+    if (!board) return;
+
+    const preset = sceneMotion(scene);
+    const exit = Math.min(preset.exitMax, Math.max(0.08, dur * preset.exitRatio));
+    const lastReveal = Math.max(0.04, dur - exit - 0.18);
+
+    if (inner) {
+      tl.fromTo(inner, {opacity: 0, y: Math.min(18, preset.distance)}, {opacity: 1, y: 0, duration: Math.min(0.34, dur / 5), ease: preset.ease}, start);
+    }
+
+    scene.querySelectorAll("[data-reveal-at]").forEach((block) => {
+      const local = Number(block.dataset.revealAt || 0);
+      const at = start + Math.min(Number.isFinite(local) ? local : 0, lastReveal);
+      const recipe = sceneRecipe(block) || {kind: "rise", durationFactor: 1, offset: 0};
+      const length = Math.min(Math.max(preset.duration * (recipe.durationFactor || 1), 0.18), Math.max(0.2, dur / 4));
+      const begin = at + (recipe.offset || 0);
+      const from = {opacity: 0};
+      const to = {opacity: 1, duration: length, ease: preset.ease};
+
+      if (recipe.kind === "wipe") {
+        from.x = -Math.round(preset.distance * 0.8);
+        from.scaleX = 0.92;
+        to.x = 0;
+        to.scaleX = 1;
+        to.transformOrigin = "left center";
+      } else if (recipe.kind === "scale") {
+        from.scale = preset.scaleFrom;
+        to.scale = 1;
+      } else if (recipe.kind === "blur") {
+        from.y = Math.min(14, preset.distance * 0.45);
+        from.filter = "blur(8px)";
+        to.y = 0;
+        to.filter = "blur(0px)";
+      } else if (recipe.kind === "slide") {
+        from.x = -Math.round(preset.distance * 1.35);
+        to.x = 0;
+      } else if (recipe.kind === "draw") {
+        from.scaleY = 0.88;
+        from.y = 8;
+        to.scaleY = 1;
+        to.y = 0;
+        to.transformOrigin = "top center";
+      } else if (recipe.kind === "pulse") {
+        from.scale = 0.96;
+        to.scale = 1;
+      } else {
+        from.y = preset.distance;
+        to.y = 0;
+        if (preset.rotateFrom) {
+          from.rotation = preset.rotateFrom;
+          to.rotation = 0;
+        }
+      }
+
+      tl.fromTo(block, from, to, begin);
+
+      // Recipe-specific children keep long lists from arriving as one slab.
+      const staggerItems = block.querySelectorAll(
+        ".flex-bullet, .flex-step, .flex-tag, .flex-compare-side, .flex-tags > span"
+      );
+      if (recipe.kind === "cascade" || block.classList.contains("flex-block-bullets") || block.classList.contains("flex-block-steps")) {
+        staggerItems.forEach((item, i) => {
+          tl.fromTo(item,
+            {opacity: 0, y: Math.min(18, preset.distance * 0.55)},
+            {opacity: 1, y: 0, duration: Math.min(0.3, length), ease: preset.ease},
+            begin + Math.min(0.6, i * preset.stagger));
+        });
+      }
+      if (recipe.kind === "counter") {
+        const value = block.querySelector(".flex-metric-value");
+        if (value) {
+          tl.fromTo(value, {scale: 0.7, opacity: 0}, {scale: 1, opacity: 1, duration: Math.min(0.5, length * 1.4), ease: "back.out(1.35)"}, begin);
+        }
+      }
+
+      // Slow, finite media drift. No infinite repeats or wall-clock timers.
+      const media = block.querySelector("img, video");
+      if (media && dur - (begin - start) > 1.4) {
+        const mediaDuration = Math.max(0.4, dur - (begin - start) - exit);
+        tl.fromTo(media, {scale: 1}, {scale: 1.035, duration: mediaDuration, ease: "none"}, begin);
+      }
+    });
+
+    if (preset.ambient) {
+      const total = Math.max(0.3, dur - exit);
+      scene.querySelectorAll(".flex-glow").forEach((glow, i) => {
+        tl.fromTo(glow,
+          {x: i ? 18 : -18, y: i ? -12 : 10, scale: 1},
+          {x: i ? -32 : 34, y: i ? 22 : -18, scale: 1.06, duration: total, ease: "sine.inOut"},
+          start);
+      });
+    }
+
+    tl.to(board, {opacity: 0, y: -12, duration: exit, ease: "power1.in"}, start + dur - exit);
+
+    // Fit translated/scaled layouts without overflowing the board or captions.
+    const fit = () => {
+      const layout = scene.querySelector(".flex-layout-inner");
+      if (!layout || !board) return;
+      const ratio = Math.min(
+        1,
+        board.clientHeight / Math.max(layout.scrollHeight, 1),
+        board.clientWidth / Math.max(layout.scrollWidth, 1)
+      );
+      if (ratio < 0.995) {
+        layout.style.transformOrigin = "top center";
+        layout.style.transform = "scale(" + ratio.toFixed(4) + ")";
+      }
+    };
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+    else fit();
+    window.addEventListener("load", fit);
+  }
+
   function animateReference(scene,tl,start,dur){
     // Snappy, seekable visual transitions aligned with audio cues (no slow blurs).
     const composition=scene.querySelector('.ref-composition');

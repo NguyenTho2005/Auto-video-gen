@@ -8,6 +8,7 @@
 6. **Chuẩn Bị & Duyệt Kịch Bản**. Trong từng cảnh:
    - Sửa lời đọc và chữ chính.
    - Đổi **Bố cục cảnh**; đổi bố cục đặt lại phần chữ hiển thị, giữ lời đọc.
+   - Bố cục **Flex** (Lưới số liệu, Trích dẫn, Dòng thời gian, Chia đôi media) dùng các block có cấu trúc. Sửa `layout`, `variant`, `blocks` và `scene.design` trong JSON; xem mục **Bố cục flex** bên dưới.
    - Mở **Sửa đầy đủ nội dung bố cục (JSON)** để sửa bullets, hai phía so sánh, steps, code, ghi chú… theo đúng mẫu. Code tối đa 10 dòng/600 ký tự; workflow 2–4 bước.
    - Chọn **Ảnh / screenshot cho cảnh** và **Thẻ screenshot / ảnh**, **Logo lớn giữa cảnh** hoặc **Ảnh nền**.
    - Chọn chuyển cảnh cut/fade/slide/zoom.
@@ -15,6 +16,60 @@
 8. **Duyệt & Render Video**, xem hết rồi tải MP4.
 
 Ảnh README không phải lúc nào cũng là logo, và ảnh screenshot không thay cho đoạn demo thật. GIF/ảnh động hiện dùng khung hình đầu. Khi web báo không lấy được ảnh, tải ảnh thủ công. Thư viện chọn ảnh hiện nằm trong phiên trang; tư liệu đã chọn được đóng gói vào thư mục video khi render.
+
+## Bố cục flex (schema v3)
+
+Bố cục flex dùng một shape chung thay vì mỗi bố cục một schema. Một cảnh flex
+gồm `layout`, `variant` tuỳ chọn và 1–10 `blocks`:
+
+```json
+{
+  "template": "flex",
+  "layout": "metric-grid",
+  "variant": "spotlight",
+  "blocks": [
+    { "kind": "heading", "text": "Những con số đáng chú ý", "eyebrow": "DỮ LIỆU TỪ NGUỒN" },
+    { "kind": "metric", "value": "82,7%", "label": "Tăng trưởng", "detail": "So với cùng kỳ", "tone": "mint" },
+    { "kind": "metric", "value": "3,2×", "label": "Tốc độ xử lý", "tone": "accent" },
+    { "kind": "source", "label": "Nguồn", "value": "Tài liệu dự án" }
+  ]
+}
+```
+
+Bốn bố cục và biến thể:
+
+| Layout | Biến thể | Block chính |
+|---|---|---|
+| `metric-grid` | `cards`, `spotlight`, `compact` | heading, body, metric (2–4), tags, source |
+| `quote-card` | `editorial`, `glass`, `split` | heading, quote, body, media, source |
+| `timeline` | `vertical`, `horizontal`, `compact` | heading, steps (2–5 bước), body, source |
+| `split-media` | `media-left`, `media-right`, `media-top` | heading, body/bullets, media, callout, tags, source |
+
+Block hợp lệ: `heading`, `body`, `bullets`, `metric`, `steps`, `quote`,
+`compare`, `callout`, `media`, `tags`, `source`. Mỗi block có thể có `id` ổn
+định để gắn mốc đọc trong `scene.blockTiming`; id mặc định là `block-<index>`.
+Chữ trên màn hình luôn được escape, không nhận HTML.
+
+`scene.design` là tuỳ chọn, dùng để đổi giao diện và chuyển động cho riêng cảnh:
+
+```json
+"design": { "variant": "glass", "skin": "hud", "motion": "cinematic", "density": "airy" }
+```
+
+- `variant`: phải có trong danh sách biến thể của layout.
+- `skin`: một id style pack hiện có; token `--tpl-*` của cảnh đổi theo pack.
+- `motion`: `calm`, `editorial`, `dynamic`, `kinetic`, `cinematic`, `tech`, `playful`.
+- `density`: `airy`, `balanced`, `dense`.
+
+Mặc định flex dùng `scene.blockTiming` nếu có, nếu không thì khớp chữ của block
+với timestamp lời đọc. Reveal, counter, media drift và exit đều là tween hữu
+hạn trong timeline GSAP nên tua tiến/lùi vẫn đúng. Block `media` lấy ảnh/video
+đã gán cho cảnh qua `scene.media`; mỗi cảnh hiện có tối đa một media record.
+
+`schemaVersion: 3` là tuỳ chọn cho script có cảnh flex. Script cũ không có
+trường này vẫn chạy bình thường; pipeline giữ nguyên version 3 thay vì ghi đè 2.
+Catalogue API trả thêm `legacyTemplates` (16 bố cục cũ) và `flexTemplates` (các
+bố cục flex); id trên web có dạng `flex-metric-grid`.
 
 ## Thêm kiểu cảnh mới bằng code
 
@@ -27,5 +82,13 @@ Không thể dán repo Remotion bất kỳ rồi chạy ngay. Với kiểu cản
 5. Đăng ký id, nhãn và dữ liệu mặc định trong `src/render/template-catalog.ts`. Trình chọn ở web lấy từ catalogue này.
 6. Mô tả cách AI dùng nó trong system-prompt.ts. JSON schema thật tự cập nhật theo Zod.
 7. Thêm fixture/test schema+composer, chạy TypeScript/test, render mẫu thật và ffprobe. Kiểm tra seek tiến/lùi và mobile.
+
+Với bố cục flex, không cần thêm vào union `TemplateData`: tạo một
+`LayoutDefinition` mới trong `src/render/layouts/` (id, biến thể, block nhận,
+slot/budget, motion, sample, hàm render), khai báo trong
+`src/render/layouts/registry.ts`, thêm CSS scoped `.flex-scene` và test fixture.
+Catalogue `FLEX_CATALOG`, prompt LLM và trình chọn bố cục tự cập nhật. Nếu cần
+một loại nội dung mới, thêm block kind vào `flex-blocks.ts` và renderer tương
+ứng; chỉ đổi schema một lần cho cả họ layout.
 
 Template React/Remotion cần được port từng phần sang hợp đồng này hoặc cần một adapter renderer riêng; phiên bản này chưa có adapter Remotion.

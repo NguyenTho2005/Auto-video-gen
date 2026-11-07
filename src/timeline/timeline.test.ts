@@ -60,6 +60,15 @@ describe("Timeline Module (M6)", () => {
       const v2Again = migrateV1toV2(v2);
       expect(v2Again).toEqual(v2);
     });
+
+    it("giữ schemaVersion 3 khi script flex được migrate", () => {
+      const rawFlex = JSON.parse(readFileSync(resolve("tests/fixtures/flex-script.json"), "utf-8"));
+      const flex: Script = ScriptSchema.parse(rawFlex);
+      const v3 = migrateV1toV2(flex);
+      expect(v3.schemaVersion).toBe(3);
+      expect(v3.timeline).toBeDefined();
+      expect(migrateV1toV2(v3)).toEqual(v3);
+    });
   });
 
   describe("buildTimelineState & timelineStateToScript", () => {
