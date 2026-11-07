@@ -39,6 +39,12 @@
 - Ngưỡng template (chữ ≥34/28/24px, phóng to ≤1,25×, lấp đầy ≥55%) là đề xuất ban đầu, cần người dùng duyệt.
 - Chi tiết: docs/PRD.md, docs/agent-prompts-m8-m10.md.
 
+## 2026-11-06 · Flex layouts (feat/flex-layouts)
+- Mỗi cảnh flex dùng một layout và tối đa một media record từ `scene.media`; media theo từng block nằm ngoài phạm vi bản này.
+- `schemaVersion: 3` là dấu phiên bản cho đầu ra có cảnh flex nhưng vẫn là tuỳ chọn. Script v1/v2 không có flex giữ nguyên đường render cũ; pipeline/migrate chỉ nâng lên 3 khi thật sự có cảnh flex.
+- `motionOptions` trong layout là gợi ý cho editor và prompt; `motionPreset` toàn cục vẫn dùng được, layout tự cung cấp mặc định khi cảnh không ghi đè.
+- Preview dùng thời lượng dự phòng; mốc reveal cuối cùng phụ thuộc timestamp TTS thật, giống mô hình timing của reference.
+
 ## 2026-11-06 · M8 thực thi (feat/m8-audio-to-srt)
 - Chọn `qbsmlabs/PhoWhisper-small` (BSD-3, ~0.97 GB) theo lựa chọn người dùng; kiến trúc one-shot CLI (không daemon). Chi tiết: docs/adr-0009-local-asr.md.
 - WER thô 17.5% vượt mục tiêu ≤12% vì Edge TTS đọc thuật ngữ Anh kiểu phiên âm Việt (audio thực nói "ghiết"/"cornish"...) — đây là giới hạn dữ liệu, không phải lỗi ASR; đường có script giữ 100% chữ kịch bản + timing thật. Chưa có cách chắn tổng quát khối ảo giác trong phần im lặng cuối audio mà không phá segment thật.

@@ -267,10 +267,12 @@ window.Studio = (() => {
       const templateLabel=document.createElement('label');templateLabel.textContent='Bố cục cảnh (đổi sẽ đặt lại nội dung hiển thị)';
       const templateSelect=document.createElement('select');templateSelect.setAttribute('aria-label',`Bố cục cảnh ${i+1}`);
       templateCatalog.filter(t=>scene.type==='hook'?t.id==='hook':scene.type==='outro'?t.id==='outro':!['hook','outro'].includes(t.id)).forEach(t=>templateSelect.add(new Option(t.label,t.id)));
-      templateSelect.value=scene.templateData.template;
+      templateSelect.value=scene.templateData.template==='flex'?'flex-'+scene.templateData.layout:scene.templateData.template;
       templateSelect.addEventListener('change',()=>{
         const selected=templateCatalog.find(t=>t.id===templateSelect.value);if(!selected)return;
         scene.templateData=JSON.parse(JSON.stringify(selected.data));delete scene.blockTiming;
+        // A variant from the previous layout is not portable to the new one.
+        if(selected.kind==='flex'&&scene.design)delete scene.design.variant;
         if(scene.templateData.template==='outro')scene.templateData.channelName=script.metadata.channel.slice(0,30);
         el('studioReview').close();showReview(script,callback);
       });

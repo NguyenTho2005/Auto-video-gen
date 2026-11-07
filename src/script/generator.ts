@@ -217,7 +217,7 @@ BẢNG NỘI DUNG: ${opts.explanationLevel&&sourceRepoUrl?'Ưu tiên worked-exam
       // Validate with ScriptSchema
       if(opts.contentMode){
         parsedJson.contentMode=opts.contentMode;
-        parsedJson.schemaVersion=2;
+        parsedJson.schemaVersion=Array.isArray(parsedJson.scenes)&&parsedJson.scenes.some((scene:any)=>scene?.templateData?.template==='flex')?3:2;
         parsedJson.preset=preset==='review_60'?'review_60':opts.targetDurationSec===30?'short_30':'news_45';
         parsedJson.metadata={...parsedJson.metadata,channel:channelName,source:{url:sources.url,domain:sources.domain,image:sources.ogImage}};
         parsedJson.captions={enabled:true,style:'minimal'};

@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import type {Script, SceneType} from './script-schema.js';
 import type {CaptionCue} from '../captions/types.js';
+import {flexBlockId, flexBlockText} from './flex-blocks.js';
 
 export const CreativeOptions = z.object({
   presetId:z.enum(['reference','reference-quick']).optional(),
@@ -20,6 +21,9 @@ export const REFERENCE_PRESETS={
   reference:{gapSec:0.08,outroHoldSec:0.6,entranceSec:0.42,fallbackStepSec:0.9},
   'reference-quick':{gapSec:0.04,outroHoldSec:0.45,entranceSec:0.25,fallbackStepSec:0.55},
 } as const;
+/** Flex layouts use narration-driven reveals without reference-specific holds. */
+export const FLEX_TIMING_PROFILE={gapSec:0.04,outroHoldSec:0.4,entranceSec:0.3,fallbackStepSec:0.8} as const;
+export type ReferenceTimingProfile={readonly gapSec:number;readonly outroHoldSec:number;readonly entranceSec:number;readonly fallbackStepSec:number};
 export function referenceSettings(script:Pick<Script,'templatePack'|'creative'>){
   if(script.templatePack!=='reference'&&!script.creative)return undefined;
   const id=script.creative?.pacingId==='quick'?'reference-quick':script.creative?.pacingId==='narrated'?'reference':script.creative?.presetId||'reference';
@@ -55,6 +59,7 @@ export function sceneBlocks(scene:SceneType):SceneBlock[]{
     case 'image-gallery':if(td.title)add('heading','gallery-title',td.title);td.images.forEach((s,i)=>add('item-'+i,'gallery-card',s.caption||td.title||'Ảnh minh họa',i));break;
     case 'phone-mockup':if(td.title)add('heading','mockup-title',td.title);add('screen','phone-frame',td.caption||td.title||'Giao diện');break;
     case 'outro':add('heading','out-cta-top',td.ctaTop);add('profile','tt-card',td.channelName);break;
+    case 'flex':td.blocks.forEach((block,i)=>add(flexBlockId(block,i),'flex-block',flexBlockText(block),i));break;
   }
   scene.referenceBoard?.rows?.forEach((r,i)=>add('detail-'+i,'ref-extra-row',r.title+' '+r.detail,i));
   scene.referenceBoard?.cards?.forEach((r,i)=>add('metric-'+i,'ref-extra-card',r.label+' '+r.value,i));
@@ -62,7 +67,7 @@ export function sceneBlocks(scene:SceneType):SceneBlock[]{
   return blocks;
 }
 const normalize=(s:string)=>s.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
-export function resolveBlockTiming(scene:SceneType,block:SceneBlock,index:number,start:number,duration:number,cues:CaptionCue[],profile:typeof REFERENCE_PRESETS[keyof typeof REFERENCE_PRESETS]){
+export function resolveBlockTiming(scene:SceneType,block:SceneBlock,index:number,start:number,duration:number,cues:CaptionCue[],profile:ReferenceTimingProfile){
   const setting=scene.blockTiming?.[block.id];
   const clamp=(sec:number)=>Math.max(0,Math.min(sec,Math.max(0,duration-profile.entranceSec-Math.min(.38,duration*.14))));
   if(setting?.atSec!==undefined)return {atSec:clamp(setting.atSec),basis:'manual' as const};
@@ -74,6 +79,22 @@ export function resolveBlockTiming(scene:SceneType,block:SceneBlock,index:number
     if(target.every((t,k)=>tokens[i+k]===t)&&++seen===(setting?.occurrence||1))return {atSec:clamp(words[i].startMs/1000-start-0.04),basis:'word' as const};
   }}
   if(scene.type==='hook')return {atSec:clamp(block.id==='stars'?.03:block.id==='heading'?(scene.githubStarLeadIn?1.05:.34):block.id==='benefit'?(scene.githubStarLeadIn?1.3:.55):(scene.githubStarLeadIn?.9:.16)),basis:'estimated' as const};
+
+  // Flex layouts reveal one block per narration cue, so a five-block board does
+  // not dump its last three cards on the same beat.
+  if(scene.templateData.template==='flex'){
+    const flexCues=cues
+      .filter(cue=>cue.startSec>=start-.1&&cue.startSec<start+duration-.25)
+      .slice()
+      .sort((a,b)=>a.startSec-b.startSec);
+    if(flexCues.length){
+      const cue=flexCues[Math.min(index,flexCues.length-1)];
+      return {atSec:clamp(Math.max(.04,cue.startSec-start-.04)),basis:'estimated' as const};
+    }
+    const count=Math.max(1,sceneBlocks(scene).length);
+    const step=Math.max(.18,(duration-.5)/count);
+    return {atSec:clamp(.04+index*step),basis:'estimated' as const};
+  }
 
   // Visual Beats for body scenes: Audio-synchronized 2-3 visual beats
   const sceneCues = cues.filter((c) => c.startSec >= start - 0.1 && c.startSec < start + duration - 0.4);
@@ -107,7 +128,7 @@ export function resolveBlockTiming(scene:SceneType,block:SceneBlock,index:number
 }
 
 /** Attach resolved, inert data to renderer-owned nodes. Text is escaped by composer. */
-export function decorateReferenceBlocks(html:string,scene:SceneType,start:number,duration:number,cues:CaptionCue[],profile:typeof REFERENCE_PRESETS[keyof typeof REFERENCE_PRESETS]):string{
+export function decorateReferenceBlocks(html:string,scene:SceneType,start:number,duration:number,cues:CaptionCue[],profile:ReferenceTimingProfile):string{
   for(const [i,b] of sceneBlocks(scene).entries()){
     const timing=resolveBlockTiming(scene,b,i,start,duration,cues,profile);let found=0;
     html=html.replace(/<([a-z][a-z0-9-]*)\b([^>]*\bclass="([^"]*)"[^>]*)>/g,(tag,name,attrs,classes)=>{

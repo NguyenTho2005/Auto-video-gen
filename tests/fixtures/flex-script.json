@@ -1,0 +1,114 @@
+{
+  "version": "2.0",
+  "schemaVersion": 3,
+  "visualStyle": "tech-editorial",
+  "templatePack": "reference",
+  "motionPreset": "calm",
+  "metadata": {
+    "title": "Bố cục linh hoạt cho video tin công nghệ",
+    "source": { "url": "https://github.com/MaiPhuc1506/Auto_GenVid", "domain": "github.com", "image": null },
+    "channel": "DevPeek36"
+  },
+  "voice": { "provider": "lucylab", "voiceId": "vietnamese-voice", "speed": 1.0 },
+  "captions": { "enabled": true, "style": "minimal", "highlightMode": "estimated" },
+  "scenes": [
+    {
+      "id": "hook",
+      "type": "hook",
+      "voiceText": "Một video tin công nghệ cần nhiều kiểu bố cục, không chỉ một khung chữ.",
+      "templateData": {
+        "template": "hook",
+        "headline": "Bố cục linh hoạt",
+        "subhead": "Nội dung dẫn dắt thiết kế",
+        "kenBurns": "zoom-in"
+      }
+    },
+    {
+      "id": "body-metrics",
+      "type": "body",
+      "voiceText": "Ba con số cho thấy tốc độ xử lý tăng mạnh, số tính năng nhiều hơn và thời gian dựng video ngắn lại.",
+      "templateData": {
+        "template": "flex",
+        "layout": "metric-grid",
+        "variant": "spotlight",
+        "blocks": [
+          { "kind": "heading", "text": "Những con số đáng chú ý", "eyebrow": "DỮ LIỆU TỪ NGUỒN" },
+          { "kind": "metric", "value": "82,7%", "label": "Tăng trưởng", "detail": "So với cùng kỳ", "tone": "mint" },
+          { "kind": "metric", "value": "3,2×", "label": "Tốc độ xử lý", "detail": "Bài kiểm thử nội bộ", "tone": "accent" },
+          { "kind": "metric", "value": "12", "label": "Tính năng mới", "detail": "Có trong bản cập nhật" },
+          { "kind": "source", "label": "Nguồn", "value": "Tài liệu dự án" }
+        ]
+      },
+      "design": { "variant": "spotlight", "motion": "tech", "density": "balanced", "skin": "hud" }
+    },
+    {
+      "id": "body-timeline",
+      "type": "body",
+      "voiceText": "Quy trình gồm ba bước: đọc nội dung, chọn bố cục phù hợp rồi mới render video.",
+      "templateData": {
+        "template": "flex",
+        "layout": "timeline",
+        "variant": "vertical",
+        "blocks": [
+          { "kind": "heading", "text": "Cách hoạt động", "eyebrow": "QUY TRÌNH" },
+          { "kind": "steps", "id": "steps", "items": [
+            { "label": "Đọc nội dung", "detail": "Văn bản hoặc SRT đã duyệt" },
+            { "label": "Chọn bố cục", "detail": "Khớp nội dung với layout" },
+            { "label": "Render", "detail": "Xuất video 9:16 có caption" }
+          ] },
+          { "kind": "source", "label": "Nguồn", "value": "Tài liệu hướng dẫn" }
+        ]
+      },
+      "blockTiming": { "steps": { "atSec": 1.8 } }
+    },
+    {
+      "id": "body-split",
+      "type": "body",
+      "voiceText": "Giao diện mới giữ nội dung và hình minh họa cạnh nhau, giúp người xem theo dõi dễ hơn.",
+      "templateData": {
+        "template": "flex",
+        "layout": "split-media",
+        "variant": "media-right",
+        "blocks": [
+          { "kind": "heading", "text": "Giao diện mới", "eyebrow": "TỪ NGUỒN" },
+          { "kind": "bullets", "items": [
+            { "text": "Bố cục rõ ràng hơn" },
+            { "text": "Thao tác trên một màn hình" },
+            { "text": "Vẫn giữ dữ liệu gốc" }
+          ] },
+          { "kind": "media", "caption": "Ảnh minh họa từ tài liệu", "fit": "contain" },
+          { "kind": "source", "label": "Nguồn", "value": "Tài liệu dự án" }
+        ]
+      },
+      "design": { "variant": "media-right", "motion": "dynamic", "density": "airy" }
+    },
+    {
+      "id": "body-quote",
+      "type": "body",
+      "voiceText": "Nhóm biên tập nhấn mạnh rằng hình ảnh chỉ hữu ích khi giúp người xem hiểu nhanh hơn lời đọc.",
+      "templateData": {
+        "template": "flex",
+        "layout": "quote-card",
+        "variant": "editorial",
+        "blocks": [
+          { "kind": "heading", "text": "Điểm cốt lõi", "eyebrow": "NHẬN ĐỊNH" },
+          { "kind": "quote", "text": "Công cụ chỉ hữu ích khi nội dung trên màn hình giúp người xem hiểu nhanh hơn lời đọc.", "author": "Nhóm biên tập", "role": "Ghi chú nội bộ" },
+          { "kind": "body", "text": "Một câu nhận định ngắn, có nguồn hoặc được ghi rõ là ý kiến." },
+          { "kind": "source", "label": "Nguồn", "value": "Tài liệu dự án" }
+        ]
+      },
+      "design": { "variant": "editorial", "motion": "cinematic" }
+    },
+    {
+      "id": "outro",
+      "type": "outro",
+      "voiceText": "Theo dõi DevPeek36 để xem thêm các bản tin công nghệ mỗi ngày.",
+      "templateData": {
+        "template": "outro",
+        "ctaTop": "Theo dõi ngay",
+        "channelName": "DevPeek36",
+        "source": "github.com"
+      }
+    }
+  ]
+}

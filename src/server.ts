@@ -39,7 +39,7 @@ import { generateScript } from "./script/generator.js";
 import { createLlmProvider } from "./script/llm-provider.js";
 import type { LLMProvider } from "./script/types.js";
 import { addLogListener, log } from "./utils/logger.js";
-import { ScriptSchema, type Script } from "./render/script-schema.js";
+import { ScriptSchema, type Script, schemaVersionFor } from "./render/script-schema.js";
 import {
   migrateV1toV2,
   buildTimelineState,
@@ -1062,7 +1062,7 @@ app.post("/api/projects/:slug/re-tts/:sceneId", async (req, res) => {
       script.timeline.scenes[sceneId] = {};
     }
     script.timeline.scenes[sceneId].duration = Math.round(newDuration * 1000) / 1000;
-    script.schemaVersion = 2;
+    script.schemaVersion = schemaVersionFor(script);
 
     await writeFile(scriptFile, JSON.stringify(script, null, 2), "utf8");
 
